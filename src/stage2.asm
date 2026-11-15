@@ -1,4 +1,4 @@
-KERNEL_OFFSET  equ 0x1000
+KERNEL_OFFSET  equ 0x10000
 VBE_INFO_ADDR  equ 0x8000
 VESA_MODE      equ 0x114
 BOOT_DRV       equ 0x7DFE
@@ -63,8 +63,8 @@ main:
 
     mov word [read_lba], K_LBA
     mov word [read_lba+2], 0
-    mov word [read_addr], 0x1000
-    mov word [read_addr+2], 0
+    mov word [read_addr], KERNEL_OFFSET & 0xFFFF
+    mov word [read_addr+2], KERNEL_OFFSET >> 16
     mov ecx, KERNEL_SECTORS
 
 .read_loop:
@@ -211,5 +211,5 @@ BEGIN_PM:
     jmp $
 
 msg_pm_ok:         db "PM entered OK", 13, 10, 0
-msg_call_kernel:   db "Calling kernel @0x1000", 13, 10, 0
+msg_call_kernel:   db "Calling kernel @0x10000", 13, 10, 0
 msg_kernel_ret:    db "Kernel returned!", 13, 10, 0

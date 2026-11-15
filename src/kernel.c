@@ -1,5 +1,6 @@
 #include "graphics.h"
 #include "asc48_lunaros.h"
+#include "logo_data.h"
 
 extern void delay_asm(u32 n);
 
@@ -48,12 +49,6 @@ static void px(int x, int y, u32 c) {
     }
 }
 
-static void rect(int x, int y, int w, int h, u32 c) {
-    for (int j = 0; j < h; j++)
-        for (int i = 0; i < w; i++)
-            px(x + i, y + j, c);
-}
-
 static u32 bg_at(int y) {
     if (y < 0) y = 0;
     if ((u32)y >= scr_h) y = (int)scr_h - 1;
@@ -74,29 +69,39 @@ static void draw_background(void) {
 }
 
 static void draw_logo(int cx, int cy) {
-    int size = 110;
-    int gap = 12;
-    int cell = (size - gap) / 2;
-    int x0 = cx - size / 2;
-    int y0 = cy - size / 2;
-    u32 c = pack(255, 255, 255);
-    rect(x0, y0, cell, cell, c);
-    rect(x0 + cell + gap, y0, cell, cell, c);
-    rect(x0, y0 + cell + gap, cell, cell, c);
-    rect(x0 + cell + gap, y0 + cell + gap, cell, cell, c);
+    int x0 = cx - LOGO_W / 2;
+    int y0 = cy - LOGO_H / 2;
+    for (int j = 0; j < LOGO_H; j++) {
+        for (int i = 0; i < LOGO_W; i++) {
+            u8 idx = logo_idx[j * LOGO_W + i];
+            u8 a = logo_pal[idx * 4 + 3];
+            if (a == 0) continue;
+            u8 r = logo_pal[idx * 4 + 0];
+            u8 g = logo_pal[idx * 4 + 1];
+            u8 b = logo_pal[idx * 4 + 2];
+            if (a != 255) {
+                u32 bg = bg_at(y0 + j);
+                u8 br = (u8)((bg >> 16) & 0xFF);
+                u8 bgc = (u8)((bg >> 8) & 0xFF);
+                u8 bb = (u8)(bg & 0xFF);
+                r = (u8)(((u32)r * a + (u32)br * (255 - a)) / 255);
+                g = (u8)(((u32)g * a + (u32)bgc * (255 - a)) / 255);
+                b = (u8)(((u32)b * a + (u32)bb * (255 - a)) / 255);
+            }
+            px(x0 + i, y0 + j, pack(r, g, b));
+        }
+    }
 }
 
-static void draw_text(void) {
+static void draw_text_at(int y) {
     int cell = ASC48_CELL;
     int track = 6;
-    int top = 8;
     int total = 0;
     for (int i = 0; i < ASC48_TEXT_COUNT; i++)
         total += asc48_text_table[i].w + track;
     total -= track;
 
     int x = (int)scr_w / 2 - total / 2;
-    int y = (int)scr_h - 96 - top;
 
     u32 fg = pack(235, 235, 235);
     for (int i = 0; i < ASC48_TEXT_COUNT; i++) {
@@ -150,13 +155,23 @@ void kernel_main(u32 lfb, u32 width, u32 height, u32 bpp, u32 pitch) {
     serial_puts("[KERNEL] background done\n");
 
     int cx = (int)scr_w / 2;
-    draw_logo(cx, 250);
-    draw_text();
-    serial_puts("[KERNEL] logo + text done, spinning\n");
-
-    int cy = 380;
     int r = 34;
     int th = 5;
+    int gap_logo_text = 30;
+    int gap_text_ring = 40;
+
+    int block_h = LOGO_H + gap_logo_text + ASC48_CELL + gap_text_ring
+                  + (r + th) * 2;
+    int top = ((int)scr_h - block_h) / 2;
+
+    int logo_cy = top + LOGO_H / 2;
+    int text_y  = top + LOGO_H + gap_logo_text;
+    int cy      = text_y + ASC48_CELL + gap_text_ring + r + th;
+
+    draw_logo(cx, logo_cy);
+    draw_text_at(text_y);
+    serial_puts("[KERNEL] logo + text done, spinning\n");
+
     int phase = 0;
     u32 white = pack(255, 255, 255);
 

@@ -75,7 +75,7 @@ def build():
          "--only-section=.text",
          "--only-section=.rdata",
          "--only-section=.data",
-         "--change-addresses=-0x1000",
+         "--change-addresses=-0x10000",
          os.path.join(BUILD, "kernel.elf"),
          os.path.join(BUILD, "kernel.bin")],
         "Converting kernel to binary")
