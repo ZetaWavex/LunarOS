@@ -49,14 +49,19 @@ static void px(int x, int y, u32 c) {
     }
 }
 
-static u32 bg_at(int y) {
+static void bg_rgb(int y, u8 *r, u8 *g, u8 *b) {
     if (y < 0) y = 0;
     if ((u32)y >= scr_h) y = (int)scr_h - 1;
     u32 den = scr_h ? scr_h : 1;
     u32 t = (u32)y * 1000u / den;
-    u8 r = (u8)((10u * (1000u - t)) / 1000u);
-    u8 g = (u8)((16u * (1000u - t)) / 1000u);
-    u8 b = (u8)((38u * (1000u - t)) / 1000u);
+    *r = (u8)((10u * (1000u - t)) / 1000u);
+    *g = (u8)((16u * (1000u - t)) / 1000u);
+    *b = (u8)((38u * (1000u - t)) / 1000u);
+}
+
+static u32 bg_at(int y) {
+    u8 r, g, b;
+    bg_rgb(y, &r, &g, &b);
     return pack(r, g, b);
 }
 
@@ -80,10 +85,8 @@ static void draw_logo(int cx, int cy) {
             u8 g = logo_pal[idx * 4 + 1];
             u8 b = logo_pal[idx * 4 + 2];
             if (a != 255) {
-                u32 bg = bg_at(y0 + j);
-                u8 br = (u8)((bg >> 16) & 0xFF);
-                u8 bgc = (u8)((bg >> 8) & 0xFF);
-                u8 bb = (u8)(bg & 0xFF);
+                u8 br, bgc, bb;
+                bg_rgb(y0 + j, &br, &bgc, &bb);
                 r = (u8)(((u32)r * a + (u32)br * (255 - a)) / 255);
                 g = (u8)(((u32)g * a + (u32)bgc * (255 - a)) / 255);
                 b = (u8)(((u32)b * a + (u32)bb * (255 - a)) / 255);
