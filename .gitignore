@@ -1,0 +1,6 @@
+.vscode/
+Program/
+build/
+
+*.log
+build_log.txt
