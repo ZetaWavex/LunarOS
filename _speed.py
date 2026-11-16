@@ -1,3 +1,4 @@
+import math
 import os
 import socket
 import subprocess
@@ -35,25 +36,8 @@ def grab(name):
     for _ in range(8):
         if os.path.exists(ppm) and os.path.getsize(ppm) > 0:
             return ppm
-        time.sleep(0.25)
+        time.sleep(0.2)
     return None
-
-
-def ring_angle(img):
-    from PIL import Image
-    w, h = img.size
-    cx, cy = w // 2, int(h * 0.683)
-    best = None
-    tot = 0
-    for yy in range(cy - 40, cy + 40):
-        for xx in range(cx - 40, cx + 40):
-            if 0 <= xx < w and 0 <= yy < h:
-                p = img.getpixel((xx, yy))
-                if p[0] > 120 and p[1] > 120 and p[2] > 120:
-                    tot += 1
-                    if best is None:
-                        best = (xx, yy)
-    return best, tot
 
 
 def main():
@@ -78,15 +62,13 @@ def main():
     time.sleep(1.5)
 
     from PIL import Image
-    import math
-    seq = []
+    frames = []
     t0 = time.time()
-    for i in range(8):
-        ppm = grab(f"_m{i}")
+    for i in range(10):
+        ppm = grab(f"_s{i}")
         if ppm:
-            im = Image.open(ppm).convert("RGB")
-            seq.append((time.time() - t0, im))
-        time.sleep(0.15)
+            frames.append((time.time() - t0, Image.open(ppm).convert("RGB")))
+        time.sleep(0.12)
 
     try:
         mon(["quit"], wait=0.1)
@@ -96,41 +78,44 @@ def main():
     if p.poll() is None:
         p.terminate()
 
-    if not seq:
+    if not frames:
         print("no frames")
         return 1
 
-    w, h = seq[0][1].size
+    w, h = frames[0][1].size
     cx, cy = w // 2, int(h * 0.683)
 
-    def centroid(im):
-        sx = sy = n = 0
-        for yy in range(cy - 40, cy + 40):
-            for xx in range(cx - 40, cx + 40):
+    def ring_pixels(im):
+        pts = []
+        for yy in range(cy - 45, cy + 45):
+            for xx in range(cx - 45, cx + 45):
                 if 0 <= xx < w and 0 <= yy < h:
-                    p = im.getpixel((xx, yy))
-                    if p[0] > 120 and p[1] > 120 and p[2] > 120:
-                        sx += xx
-                        sy += yy
-                        n += 1
-        if n == 0:
-            return None
-        return (sx / n - cx, sy / n - cy, n)
+                    q = im.getpixel((xx, yy))
+                    if q[0] > 120 and q[1] > 120 and q[2] > 120:
+                        pts.append((xx, yy))
+        return pts
 
-    print("frames:", len(seq), "size:", (w, h))
+    def top_angle(pts):
+        if not pts:
+            return None
+        top = min(pts, key=lambda t: t[1])
+        return math.degrees(math.atan2(top[1] - cy, top[0] - cx))
+
+    print("frames:", len(frames), "size:", (w, h))
     prev = None
-    for t, im in seq:
-        c = centroid(im)
-        if c is None:
-            print(f"t={t:6.3f}  no ring")
-            continue
-        ang = math.degrees(math.atan2(c[1], c[0]))
-        d = ""
-        if prev is not None:
-            dd = (ang - prev + 540) % 360 - 180
-            d = f"  d_ang={dd:+7.2f}"
-        print(f"t={t:6.3f}  n={c[2]:4d}  ang={ang:+7.2f}{d}")
+    prev_pts = None
+    for t, im in frames:
+        pts = ring_pixels(im)
+        ang = top_angle(pts)
+        diff = ""
+        if prev_pts is not None:
+            s1 = set(prev_pts)
+            s2 = set(pts)
+            diff = f"  changed={len(s1 ^ s2):4d}"
+        a = f"{ang:+7.2f}" if ang is not None else "   n/a"
+        print(f"t={t:6.3f}  n={len(pts):4d}  top_ang={a}{diff}")
         prev = ang
+        prev_pts = pts
     return 0
 
 
