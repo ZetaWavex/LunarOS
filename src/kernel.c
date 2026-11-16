@@ -25,52 +25,34 @@ static void serial_putc(char c) {
     outb(0x3F8, (u8)c);
 }
 
-static inline void io_wait(void) {
-    outb(0x80, 0);
-}
-
-static u16 pit_read(void) {
+static u16 pit2_read(void) {
     outb(0x43, 0x80);
-    u16 v = inb(0x40);
-    v |= (u16)inb(0x40) << 8;
+    u16 v = inb(0x42);
+    v |= (u16)inb(0x42) << 8;
     return v;
 }
 
 static void delay_us(u32 us) {
-    u32 chunks = us / 54925u;
-    u32 rest = us % 54925u;
+    u8 gate = inb(0x61);
+    outb(0x61, (u8)(gate | 0x01));
 
-    for (u32 c = 0; c < chunks; c++) {
-        outb(0x43, 0xB0);
-        outb(0x42, 0xFF);
-        outb(0x42, 0xFF);
-        u16 prev = pit_read();
-        u16 wraps = 0;
-        while (wraps < 1) {
-            u16 now = pit_read();
-            if (now > prev) wraps++;
-            prev = now;
-        }
-    }
+    while (us > 0) {
+        u32 chunk = us > 50000u ? 50000u : us;
+        us -= chunk;
 
-    if (rest > 0) {
-        u32 ticks = (rest * 1193182u) / 1000000u;
-        if (ticks > 0xFFFF) ticks = 0xFFFF;
+        u32 ticks = (chunk * 1193182u + 999999u) / 1000000u;
         if (ticks < 2) ticks = 2;
-        u16 reload = (u16)(0x10000u - ticks);
-        outb(0x43, 0xB0);
-        outb(0x42, (u8)(reload & 0xFF));
-        outb(0x42, (u8)(reload >> 8));
+        if (ticks > 0xFFFEu) ticks = 0xFFFEu;
 
-        u16 prev = pit_read();
-        u32 done = 0;
-        while (done < ticks) {
-            u16 now = pit_read();
-            if (now > prev) done += (u32)(now - prev);
-            else if (now < prev) done += (u32)(prev - now);
-            prev = now;
-        }
+        outb(0x43, 0xB0);
+        outb(0x42, (u8)(ticks & 0xFF));
+        outb(0x42, (u8)((ticks >> 8) & 0xFF));
+
+        u16 start = pit2_read();
+        while ((u32)(u16)(start - pit2_read()) < ticks) { }
     }
+
+    outb(0x61, gate);
 }
 
 static void serial_puts(const char *s) {
@@ -296,6 +278,6 @@ void kernel_main(u32 lfb, u32 width, u32 height, u32 bpp, u32 pitch) {
         draw_ring_box(ring_buf, box, bcx, bcy, box_y, r, th, phase, white);
         gfx_blit_buffer(ring_buf, box, box_x, box_y, box, box);
         phase = (phase + ARC_STEP) % 360;
-        delay_asm((u32)(ARC_DELAY * scr_h / 600u));
+        delay_us(ARC_DELAY_US);
     }
 }
