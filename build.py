@@ -9,6 +9,13 @@ BUILD = os.path.join(ROOT, "build")
 
 NASM = r"d:\NewX\OS\Try 5\Program\NASM\nasm.exe"
 
+sys.path.insert(0, ROOT)
+from BM import dfn_encode
+
+DEFAULT_PASSWORD = "1234"
+PWD_LBA = 128
+PWD_FILE = "password.txt"
+
 
 def _find_mingw():
     cands = [
@@ -59,6 +66,16 @@ def pad_to_sectors(path, sectors):
     with open(path, "wb") as f:
         f.write(data)
     return len(data)
+
+
+def make_password_file():
+    encoded = dfn_encode(DEFAULT_PASSWORD, 1234)
+    path = os.path.join(BUILD, PWD_FILE)
+    with open(path, "wb") as f:
+        f.write(encoded.encode("ascii"))
+    print(f"[BUILD] password file: {PWD_FILE} = {encoded}")
+    print(f"  default password: {DEFAULT_PASSWORD}")
+    return path
 
 def build():
     clean()
