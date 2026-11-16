@@ -43,7 +43,7 @@ static u32 scr_h;
 
 static u32 pack(u8 r, u8 g, u8 b) {
     if (fb_bpp == 32) return ((u32)r << 16) | ((u32)g << 8) | (u32)b;
-    if (fb_bpp == 24) return ((u32)b << 16) | ((u32)g << 8) | (u32)r;
+    if (fb_bpp == 24) return ((u32)r << 16) | ((u32)g << 8) | (u32)b;
     return (u32)((u16)((r & 0xF8) << 8) | (u16)((g & 0xFC) << 3) | (b >> 3));
 }
 
