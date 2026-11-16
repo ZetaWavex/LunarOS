@@ -11,9 +11,9 @@ IMG = os.path.join(ROOT, "build", "os-image.img")
 PORT = 5555
 
 
-def mon(cmds, wait=0.35):
+def mon(cmds, wait=0.2):
     s = socket.create_connection(("127.0.0.1", PORT), timeout=5)
-    s.settimeout(2)
+    s.settimeout(1.5)
     try:
         s.recv(4096)
     except socket.timeout:
@@ -32,11 +32,11 @@ def grab(name):
     ppm = os.path.join(ROOT, "build", name + ".ppm")
     if os.path.exists(ppm):
         os.remove(ppm)
-    mon(["screendump build/" + name + ".ppm"])
-    for _ in range(8):
+    mon(["screendump build/" + name + ".ppm"], wait=0.12)
+    for _ in range(10):
         if os.path.exists(ppm) and os.path.getsize(ppm) > 0:
             return ppm
-        time.sleep(0.2)
+        time.sleep(0.15)
     return None
 
 
@@ -62,60 +62,61 @@ def main():
     time.sleep(1.5)
 
     from PIL import Image
-    frames = []
+    w = h = 0
+    imgs = []
+    stamps = []
     t0 = time.time()
-    for i in range(10):
-        ppm = grab(f"_s{i}")
+    for i in range(12):
+        ppm = grab(f"_q{i}")
         if ppm:
-            frames.append((time.time() - t0, Image.open(ppm).convert("RGB")))
-        time.sleep(0.12)
+            im = Image.open(ppm).convert("RGB")
+            w, h = im.size
+            imgs.append(im)
+            stamps.append(time.time() - t0)
+        time.sleep(0.02)
 
     try:
-        mon(["quit"], wait=0.1)
+        mon(["quit"], wait=0.05)
     except Exception:
         pass
-    time.sleep(0.4)
+    time.sleep(0.3)
     if p.poll() is None:
         p.terminate()
 
-    if not frames:
-        print("no frames")
+    if len(imgs) < 3:
+        print("too few frames")
         return 1
 
-    w, h = frames[0][1].size
     cx, cy = w // 2, int(h * 0.683)
 
-    def ring_pixels(im):
-        pts = []
-        for yy in range(cy - 45, cy + 45):
-            for xx in range(cx - 45, cx + 45):
+    def sector_angles(im):
+        best = {}
+        for yy in range(cy - 40, cy + 40):
+            for xx in range(cx - 40, cx + 40):
                 if 0 <= xx < w and 0 <= yy < h:
                     q = im.getpixel((xx, yy))
                     if q[0] > 120 and q[1] > 120 and q[2] > 120:
-                        pts.append((xx, yy))
-        return pts
+                        ang = math.degrees(math.atan2(yy - cy, xx - cx))
+                        b = int((ang + 180) // 10) * 10 - 180
+                        d = math.hypot(xx - cx, yy - cy)
+                        if b not in best or d > best[b]:
+                            best[b] = d
+        return set(best.keys())
 
-    def top_angle(pts):
-        if not pts:
-            return None
-        top = min(pts, key=lambda t: t[1])
-        return math.degrees(math.atan2(top[1] - cy, top[0] - cx))
-
-    print("frames:", len(frames), "size:", (w, h))
+    print("frames:", len(imgs))
     prev = None
-    prev_pts = None
-    for t, im in frames:
-        pts = ring_pixels(im)
-        ang = top_angle(pts)
-        diff = ""
-        if prev_pts is not None:
-            s1 = set(prev_pts)
-            s2 = set(pts)
-            diff = f"  changed={len(s1 ^ s2):4d}"
-        a = f"{ang:+7.2f}" if ang is not None else "   n/a"
-        print(f"t={t:6.3f}  n={len(pts):4d}  top_ang={a}{diff}")
-        prev = ang
-        prev_pts = pts
+    for i, im in enumerate(imgs):
+        sec = sector_angles(im)
+        if prev is not None:
+            only_prev = prev - sec
+            only_cur = sec - prev
+            a = sorted(only_prev)
+            b = sorted(only_cur)
+            print(f"t={stamps[i]:6.3f}  occupied={len(sec):2d}  "
+                  f"gone={a[:4]} new={b[:4]}")
+        else:
+            print(f"t={stamps[i]:6.3f}  occupied={len(sec):2d}")
+        prev = sec
     return 0
 
 
