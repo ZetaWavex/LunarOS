@@ -4,6 +4,10 @@
 
 extern void delay_asm(u32 n);
 
+#define ARC_STEP    6
+#define ARC_DELAY   12000
+#define RING_BOX_MAX 160
+
 static inline void outb(u16 port, u8 val) {
     __asm__ __volatile__("outb %0, %1" :: "a"(val), "Nd"(port));
 }
@@ -73,12 +77,14 @@ static void draw_background(void) {
     }
 }
 
-static void draw_logo(int cx, int cy) {
-    int x0 = cx - LOGO_W / 2;
-    int y0 = cy - LOGO_H / 2;
-    for (int j = 0; j < LOGO_H; j++) {
-        for (int i = 0; i < LOGO_W; i++) {
-            u8 idx = logo_idx[j * LOGO_W + i];
+static void draw_logo(int cx, int cy, int size) {
+    int x0 = cx - size / 2;
+    int y0 = cy - size / 2;
+    for (int j = 0; j < size; j++) {
+        int sy = (int)((long)j * LOGO_H / size);
+        for (int i = 0; i < size; i++) {
+            int sx = (int)((long)i * LOGO_W / size);
+            u8 idx = logo_idx[sy * LOGO_W + sx];
             u8 a = logo_pal[idx * 4 + 3];
             if (a == 0) continue;
             u8 r = logo_pal[idx * 4 + 0];
@@ -96,29 +102,36 @@ static void draw_logo(int cx, int cy) {
     }
 }
 
-static void draw_text_at(int y) {
-    int cell = ASC48_CELL;
+static int text_width(int scale) {
     int track = 6;
     int total = 0;
     for (int i = 0; i < ASC48_TEXT_COUNT; i++)
-        total += asc48_text_table[i].w + track;
+        total += asc48_text_table[i].w * scale + track;
     total -= track;
+    return total;
+}
 
+static void draw_text_at(int y, int scale) {
+    int cell = ASC48_CELL;
+    int track = 6;
+    int total = text_width(scale);
     int x = (int)scr_w / 2 - total / 2;
+    int h = cell * scale;
 
     u32 fg = pack(235, 235, 235);
     for (int i = 0; i < ASC48_TEXT_COUNT; i++) {
         const asc48_glyph_t *g = &asc48_text_table[i];
         const u8 *bits = asc48_text_bits + (u32)i * ASC48_GLYPH_BYTES;
-        for (int row = 0; row < cell; row++) {
-            for (int col = 0; col < g->w; col++) {
-                int sx = g->x0 + col;
-                u8 b = bits[row * ASC48_ROW_BYTES + (sx >> 3)];
+        for (int row = 0; row < h; row++) {
+            int sy = row / scale;
+            for (int col = 0; col < g->w * scale; col++) {
+                int sx = g->x0 + col / scale;
+                u8 b = bits[sy * ASC48_ROW_BYTES + (sx >> 3)];
                 if (b & (0x80 >> (sx & 7)))
                     px(x + col, y + row, fg);
             }
         }
-        x += g->w + track;
+        x += g->w * scale + track;
     }
 }
 
@@ -158,37 +171,58 @@ void kernel_main(u32 lfb, u32 width, u32 height, u32 bpp, u32 pitch) {
     serial_puts("[KERNEL] background done\n");
 
     int cx = (int)scr_w / 2;
-    int r = 34;
-    int th = 5;
-    int gap_logo_text = 30;
-    int gap_text_ring = 40;
 
-    int block_h = LOGO_H + gap_logo_text + ASC48_CELL + gap_text_ring
-                  + (r + th) * 2;
+    int k = (int)(scr_h * 100u / 600u);
+    if (k < 60) k = 60;
+    if (k > 150) k = 150;
+
+    int logo_size = LOGO_H * k / 100;
+    if (logo_size < 32) logo_size = 32;
+
+    int tscale = (k + 50) / 100;
+    if (tscale < 1) tscale = 1;
+    while (tscale > 1 && text_width(tscale) > (int)scr_w - 40)
+        tscale--;
+
+    int r  = 34 * k / 100;
+    int th = 5 * k / 100;
+    if (r < 10) r = 10;
+    if (th < 2) th = 2;
+
+    int gap1 = 30 * k / 100;
+    int gap2 = 40 * k / 100;
+    if (gap1 < 8) gap1 = 8;
+    if (gap2 < 10) gap2 = 10;
+
+    int text_h = ASC48_CELL * tscale;
+
+    int block_h = logo_size + gap1 + text_h + gap2 + (r + th) * 2;
     int top = ((int)scr_h - block_h) / 2;
+    if (top < 0) top = 0;
 
-    int logo_cy = top + LOGO_H / 2;
-    int text_y  = top + LOGO_H + gap_logo_text;
-    int cy      = text_y + ASC48_CELL + gap_text_ring + r + th;
+    int logo_cy = top + logo_size / 2;
+    int text_y  = top + logo_size + gap1;
+    int cy      = text_y + text_h + gap2 + r + th;
 
-    draw_logo(cx, logo_cy);
-    draw_text_at(text_y);
+    draw_logo(cx, logo_cy, logo_size);
+    draw_text_at(text_y, tscale);
     serial_puts("[KERNEL] logo + text done, spinning\n");
 
     int phase = 0;
     u32 white = pack(255, 255, 255);
 
     int box = (r + th + 3) * 2;
-    int box_x = cx - r - th - 3;
-    int box_y = cy - r - th - 3;
-    static u32 ring_buf[96 * 96];
-    int bcx = r + th + 3;
-    int bcy = r + th + 3;
+    if (box > RING_BOX_MAX) box = RING_BOX_MAX;
+    int box_x = cx - box / 2;
+    int box_y = cy - box / 2;
+    static u32 ring_buf[RING_BOX_MAX * RING_BOX_MAX];
+    int bcx = box / 2;
+    int bcy = box / 2;
 
     while (1) {
         draw_ring_box(ring_buf, box, bcx, bcy, box_y, r, th, phase, white);
         gfx_blit_buffer(ring_buf, box, box_x, box_y, box, box);
-        phase = (phase + 15) % 360;
-        delay_asm(12000);
+        phase = (phase + ARC_STEP) % 360;
+        delay_asm(ARC_DELAY);
     }
 }
