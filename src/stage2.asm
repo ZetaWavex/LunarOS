@@ -80,10 +80,12 @@ main:
 
 .read_do:
     mov si, kDAPACK
-    mov ax, [read_addr]
-    mov [kDAPACK.addr], ax
-    mov ax, [read_addr+2]
+    mov eax, [read_addr]
+    mov edx, eax
+    shr eax, 4
     mov [kDAPACK.addr+2], ax
+    and edx, 0x0F
+    mov [kDAPACK.addr], dx
     mov eax, [read_lba]
     mov [kDAPACK.lba], eax
     mov ax, [read_count]
