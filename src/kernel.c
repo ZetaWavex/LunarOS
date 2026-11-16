@@ -4,8 +4,8 @@
 
 extern void delay_asm(u32 n);
 
-#define ARC_STEP      3
-#define ARC_DELAY_US  70000
+#define ARC_STEP      6
+#define ARC_DELAY_US  15000
 #define RING_BOX_MAX 128
 #define RING_SCALE  55
 #define TEXT_SCALE  65
@@ -282,6 +282,5 @@ void kernel_main(u32 lfb, u32 width, u32 height, u32 bpp, u32 pitch) {
         gfx_blit_buffer(ring_buf, box, box_x, box_y, box, box);
         phase = (phase + ARC_STEP) % 360;
         delay_us(ARC_DELAY_US);
-        serial_putc('.');
     }
 }
