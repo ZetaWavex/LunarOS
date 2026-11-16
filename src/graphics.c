@@ -8,7 +8,7 @@ static u32 g_bpp = 24;
 
 color_t rgb(u8 r, u8 g, u8 b) {
     if (g_bpp == 32) return (u32)0xFF000000 | ((u32)r << 16) | ((u32)g << 8) | b;
-    if (g_bpp == 24) return ((u32)b << 16) | ((u32)g << 8) | r;
+    if (g_bpp == 24) return ((u32)r << 16) | ((u32)g << 8) | b;
     if (g_bpp == 16) return ((u16)((r & 0xF8) << 8) | ((g & 0xFC) << 3) | (b >> 3));
     return 0;
 }
