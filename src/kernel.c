@@ -4,8 +4,8 @@
 
 extern void delay_asm(u32 n);
 
-#define ARC_STEP      6
-#define ARC_DELAY_US  25000
+#define ARC_STEP      4
+#define ARC_DELAY_US  40000
 #define RING_BOX_MAX 128
 #define RING_SCALE  55
 #define TEXT_SCALE  65
@@ -44,7 +44,7 @@ static void delay_us(u32 us) {
         if (ticks < 2) ticks = 2;
         if (ticks > 0xFFFEu) ticks = 0xFFFEu;
 
-        outb(0x43, 0xB0);
+        outb(0x43, 0xB4);
         outb(0x42, (u8)(ticks & 0xFF));
         outb(0x42, (u8)((ticks >> 8) & 0xFF));
 
