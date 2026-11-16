@@ -6,7 +6,7 @@ extern void delay_asm(u32 n);
 
 #define ARC_STEP    6
 #define ARC_DELAY   12000
-#define RING_BOX_MAX 160
+#define RING_BOX_MAX 128
 
 static inline void outb(u16 port, u8 val) {
     __asm__ __volatile__("outb %0, %1" :: "a"(val), "Nd"(port));
@@ -25,6 +25,14 @@ static void serial_putc(char c) {
 
 static void serial_puts(const char *s) {
     while (*s) serial_putc(*s++);
+}
+
+static void serial_putnum(u32 v) {
+    char buf[12];
+    int i = 0;
+    if (v == 0) { serial_putc('0'); return; }
+    while (v && i < 12) { buf[i++] = (char)('0' + (v % 10)); v /= 10; }
+    while (i > 0) serial_putc(buf[--i]);
 }
 
 static u8 *fb;
@@ -166,6 +174,13 @@ void kernel_main(u32 lfb, u32 width, u32 height, u32 bpp, u32 pitch) {
     scr_h = height;
 
     serial_puts("[KERNEL] gfx ready, drawing boot screen\n");
+    serial_puts("[KERNEL] mode ");
+    serial_putnum(scr_w);
+    serial_putc('x');
+    serial_putnum(scr_h);
+    serial_putc(' ');
+    serial_putnum(fb_bpp);
+    serial_puts("bpp\n");
 
     draw_background();
     serial_puts("[KERNEL] background done\n");
@@ -223,6 +238,6 @@ void kernel_main(u32 lfb, u32 width, u32 height, u32 bpp, u32 pitch) {
         draw_ring_box(ring_buf, box, bcx, bcy, box_y, r, th, phase, white);
         gfx_blit_buffer(ring_buf, box, box_x, box_y, box, box);
         phase = (phase + ARC_STEP) % 360;
-        delay_asm(ARC_DELAY);
+        delay_asm((u32)(ARC_DELAY * scr_h / 600u));
     }
 }

@@ -32,7 +32,12 @@ def build():
 
 
 def launch():
-    cmd = [QEMU, "-drive", f"format=raw,file={IMAGE}"]
+    cmd = [
+        QEMU,
+        "-vga", "std",
+        "-display", "gtk,zoom-to-fit=on",
+        "-drive", f"format=raw,file={IMAGE}",
+    ]
     for attempt in range(1, MAX_RETRY + 1):
         print()
         banner("Starting QEMU...")
