@@ -4,8 +4,8 @@
 
 extern void delay_asm(u32 n);
 
-#define ARC_STEP      2
-#define ARC_DELAY_US  80000
+#define ARC_STEP      3
+#define ARC_DELAY_US  70000
 #define RING_BOX_MAX 128
 #define RING_SCALE  55
 #define TEXT_SCALE  65
