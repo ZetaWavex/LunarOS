@@ -8,7 +8,29 @@ SRC = os.path.join(ROOT, "src")
 BUILD = os.path.join(ROOT, "build")
 
 NASM = r"d:\NewX\OS\Try 5\Program\NASM\nasm.exe"
-MINGW_BIN = r"D:\Program\Dev-Cpp\MinGW64\bin"
+
+
+def _find_mingw():
+    cands = [
+        r"D:\NewX\OS\Try 4\Program\MinGW64\bin",
+        r"E:\ZTX\Program\MinGW64",
+        r"D:\Program\Dev-Cpp\MinGW64\bin",
+        r"C:\Program Files\Dev-Cpp\MinGW64\bin",
+    ]
+    for d in cands:
+        gcc = os.path.join(d, "gcc.exe")
+        oc = os.path.join(d, "objcopy.exe")
+        if not (os.path.exists(gcc) and os.path.exists(oc)):
+            continue
+        libexec = os.path.join(os.path.dirname(d), "libexec", "gcc")
+        if os.path.isdir(libexec):
+            for _, _, files in os.walk(libexec):
+                if "cc1.exe" in files:
+                    return d
+    return cands[0]
+
+
+MINGW_BIN = _find_mingw()
 GCC = os.path.join(MINGW_BIN, "gcc.exe")
 OBJCOPY = os.path.join(MINGW_BIN, "objcopy.exe")
 
