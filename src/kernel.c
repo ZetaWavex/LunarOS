@@ -40,7 +40,7 @@ static void delay_us(u32 us) {
         u32 chunk = us > 50000u ? 50000u : us;
         us -= chunk;
 
-        u32 ticks = (chunk * 1193182u + 999999u) / 1000000u;
+        u32 ticks = (chunk * 1193u + 500u) / 1000u;
         if (ticks < 2) ticks = 2;
         if (ticks > 0xFFFEu) ticks = 0xFFFEu;
 
