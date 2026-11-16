@@ -7,6 +7,7 @@ extern void delay_asm(u32 n);
 #define ARC_STEP    6
 #define ARC_DELAY   12000
 #define RING_BOX_MAX 128
+#define RING_SCALE  55
 
 static inline void outb(u16 port, u8 val) {
     __asm__ __volatile__("outb %0, %1" :: "a"(val), "Nd"(port));
@@ -199,9 +200,9 @@ void kernel_main(u32 lfb, u32 width, u32 height, u32 bpp, u32 pitch) {
     while (tscale > 1 && text_width(tscale) > (int)scr_w - 40)
         tscale--;
 
-    int r  = 34 * k / 100;
-    int th = 5 * k / 100;
-    if (r < 10) r = 10;
+    int r  = (34 * k * RING_SCALE + 5000) / 10000;
+    int th = (5 * k * RING_SCALE + 5000) / 10000;
+    if (r < 8) r = 8;
     if (th < 2) th = 2;
 
     int gap1 = 30 * k / 100;
