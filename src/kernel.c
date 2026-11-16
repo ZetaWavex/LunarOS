@@ -44,12 +44,15 @@ static void delay_us(u32 us) {
         if (ticks < 2) ticks = 2;
         if (ticks > 0xFFFEu) ticks = 0xFFFEu;
 
-        outb(0x43, 0xB4);
+        outb(0x43, 0xB0);
         outb(0x42, (u8)(ticks & 0xFF));
         outb(0x42, (u8)((ticks >> 8) & 0xFF));
 
-        u16 start = pit2_read();
-        while ((u32)(u16)(start - pit2_read()) < ticks) { }
+        u32 guard = 0x400000u;
+        while (guard-- > 0) {
+            u16 now = pit2_read();
+            if (now == 0) break;
+        }
     }
 
     outb(0x61, gate);
