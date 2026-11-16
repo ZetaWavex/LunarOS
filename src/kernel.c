@@ -4,10 +4,11 @@
 
 extern void delay_asm(u32 n);
 
-#define ARC_STEP    6
-#define ARC_DELAY   12000
+#define ARC_STEP      6
+#define ARC_DELAY_US  25000
 #define RING_BOX_MAX 128
 #define RING_SCALE  55
+#define TEXT_SCALE  65
 
 static inline void outb(u16 port, u8 val) {
     __asm__ __volatile__("outb %0, %1" :: "a"(val), "Nd"(port));
@@ -22,6 +23,54 @@ static inline u8 inb(u16 port) {
 static void serial_putc(char c) {
     while (!(inb(0x3FD) & 0x20)) { }
     outb(0x3F8, (u8)c);
+}
+
+static inline void io_wait(void) {
+    outb(0x80, 0);
+}
+
+static u16 pit_read(void) {
+    outb(0x43, 0x80);
+    u16 v = inb(0x40);
+    v |= (u16)inb(0x40) << 8;
+    return v;
+}
+
+static void delay_us(u32 us) {
+    u32 chunks = us / 54925u;
+    u32 rest = us % 54925u;
+
+    for (u32 c = 0; c < chunks; c++) {
+        outb(0x43, 0xB0);
+        outb(0x42, 0xFF);
+        outb(0x42, 0xFF);
+        u16 prev = pit_read();
+        u16 wraps = 0;
+        while (wraps < 1) {
+            u16 now = pit_read();
+            if (now > prev) wraps++;
+            prev = now;
+        }
+    }
+
+    if (rest > 0) {
+        u32 ticks = (rest * 1193182u) / 1000000u;
+        if (ticks > 0xFFFF) ticks = 0xFFFF;
+        if (ticks < 2) ticks = 2;
+        u16 reload = (u16)(0x10000u - ticks);
+        outb(0x43, 0xB0);
+        outb(0x42, (u8)(reload & 0xFF));
+        outb(0x42, (u8)(reload >> 8));
+
+        u16 prev = pit_read();
+        u32 done = 0;
+        while (done < ticks) {
+            u16 now = pit_read();
+            if (now > prev) done += (u32)(now - prev);
+            else if (now < prev) done += (u32)(prev - now);
+            prev = now;
+        }
+    }
 }
 
 static void serial_puts(const char *s) {
@@ -111,36 +160,43 @@ static void draw_logo(int cx, int cy, int size) {
     }
 }
 
-static int text_width(int scale) {
-    int track = 6;
+static int text_track(int pct) {
+    int t = (6 * pct + 50) / 100;
+    return t < 2 ? 2 : t;
+}
+
+static int text_width(int pct) {
+    int track = text_track(pct);
     int total = 0;
     for (int i = 0; i < ASC48_TEXT_COUNT; i++)
-        total += asc48_text_table[i].w * scale + track;
+        total += (asc48_text_table[i].w * pct + 50) / 100 + track;
     total -= track;
     return total;
 }
 
-static void draw_text_at(int y, int scale) {
-    int cell = ASC48_CELL;
-    int track = 6;
-    int total = text_width(scale);
+static void draw_text_at(int y, int pct) {
+    int track = text_track(pct);
+    int total = text_width(pct);
     int x = (int)scr_w / 2 - total / 2;
-    int h = cell * scale;
+    int h = (ASC48_CELL * pct + 50) / 100;
+    if (h < 1) h = 1;
 
     u32 fg = pack(235, 235, 235);
     for (int i = 0; i < ASC48_TEXT_COUNT; i++) {
         const asc48_glyph_t *g = &asc48_text_table[i];
         const u8 *bits = asc48_text_bits + (u32)i * ASC48_GLYPH_BYTES;
+        int gw = (g->w * pct + 50) / 100;
+        if (gw < 1) gw = 1;
         for (int row = 0; row < h; row++) {
-            int sy = row / scale;
-            for (int col = 0; col < g->w * scale; col++) {
-                int sx = g->x0 + col / scale;
+            int sy = row * ASC48_CELL / h;
+            for (int col = 0; col < gw; col++) {
+                int sx = g->x0 + col * g->w / gw;
                 u8 b = bits[sy * ASC48_ROW_BYTES + (sx >> 3)];
                 if (b & (0x80 >> (sx & 7)))
                     px(x + col, y + row, fg);
             }
         }
-        x += g->w * scale + track;
+        x += gw + track;
     }
 }
 
@@ -195,10 +251,10 @@ void kernel_main(u32 lfb, u32 width, u32 height, u32 bpp, u32 pitch) {
     int logo_size = LOGO_H * k / 100;
     if (logo_size < 32) logo_size = 32;
 
-    int tscale = (k + 50) / 100;
-    if (tscale < 1) tscale = 1;
-    while (tscale > 1 && text_width(tscale) > (int)scr_w - 40)
-        tscale--;
+    int tpct = k * TEXT_SCALE / 100;
+    if (tpct < 20) tpct = 20;
+    while (tpct > 20 && text_width(tpct) > (int)scr_w - 40)
+        tpct--;
 
     int r  = (34 * k * RING_SCALE + 5000) / 10000;
     int th = (5 * k * RING_SCALE + 5000) / 10000;
@@ -210,7 +266,8 @@ void kernel_main(u32 lfb, u32 width, u32 height, u32 bpp, u32 pitch) {
     if (gap1 < 8) gap1 = 8;
     if (gap2 < 10) gap2 = 10;
 
-    int text_h = ASC48_CELL * tscale;
+    int text_h = (ASC48_CELL * tpct + 50) / 100;
+    if (text_h < 1) text_h = 1;
 
     int block_h = logo_size + gap1 + text_h + gap2 + (r + th) * 2;
     int top = ((int)scr_h - block_h) / 2;
@@ -221,7 +278,7 @@ void kernel_main(u32 lfb, u32 width, u32 height, u32 bpp, u32 pitch) {
     int cy      = text_y + text_h + gap2 + r + th;
 
     draw_logo(cx, logo_cy, logo_size);
-    draw_text_at(text_y, tscale);
+    draw_text_at(text_y, tpct);
     serial_puts("[KERNEL] logo + text done, spinning\n");
 
     int phase = 0;
