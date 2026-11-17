@@ -549,13 +549,33 @@ static void fill_rect(int x, int y, int w, int h, u32 c) {
 
 #include "cursor_data.h"
 
-#define CUR_W CURSOR_32_W
-#define CUR_H CURSOR_32_H
+#define CURSOR_ARROW 0
+#define CURSOR_BEAM  1
 
+typedef struct {
+    const unsigned char *px;
+    int w, h;
+    int hotx, hoty;
+    int scale;
+} cursor_img_t;
+
+static const cursor_img_t cursor_imgs[2] = {
+    { cursor_arrow_rgba, CURSOR_ARROW_W, CURSOR_ARROW_H,
+      CURSOR_ARROW_HOTX, CURSOR_ARROW_HOTY, 100 },
+    { cursor_beam_rgba, CURSOR_BEAM_W, CURSOR_BEAM_H,
+      CURSOR_BEAM_HOTX, CURSOR_BEAM_HOTY, 45 },
+};
+
+#define CUR_BUF_W (CURSOR_MAX_W * 150 / 100 + 1)
+#define CUR_BUF_H (CURSOR_MAX_H * 150 / 100 + 1)
+
+static int cur_shape = CURSOR_ARROW;
 static int cur_drawn = 0;
 static int cur_px = 0;
 static int cur_py = 0;
-static u32 cur_save[CUR_H * CUR_W];
+static int cur_w = 0;
+static int cur_h = 0;
+static u32 cur_save[CUR_BUF_W * CUR_BUF_H];
 
 static u32 blend(u32 dst, u8 r, u8 g, u8 b, u8 a) {
     if (a == 0) return dst;
@@ -584,30 +604,41 @@ static u32 blend(u32 dst, u8 r, u8 g, u8 b, u8 a) {
 
 static void cursor_erase(void) {
     if (!cur_drawn) return;
-    for (int j = 0; j < CUR_H; j++)
-        for (int i = 0; i < CUR_W; i++)
-            px(cur_px + i, cur_py + j, cur_save[j * CUR_W + i]);
+    for (int j = 0; j < cur_h; j++)
+        for (int i = 0; i < cur_w; i++)
+            px(cur_px + i, cur_py + j, cur_save[j * cur_w + i]);
     cur_drawn = 0;
 }
 
 static void cursor_draw(void) {
-    cur_px = mouse_x - CURSOR_32_HOTX;
-    cur_py = mouse_y - CURSOR_32_HOTY;
+    const cursor_img_t *c = &cursor_imgs[cur_shape];
 
-    for (int j = 0; j < CUR_H; j++) {
-        for (int i = 0; i < CUR_W; i++) {
+    cur_w = (c->w * ui_k * c->scale) / 10000;
+    cur_h = (c->h * ui_k * c->scale) / 10000;
+    if (cur_w < 1) cur_w = 1;
+    if (cur_h < 1) cur_h = 1;
+    if (cur_w > CUR_BUF_W) cur_w = CUR_BUF_W;
+    if (cur_h > CUR_BUF_H) cur_h = CUR_BUF_H;
+
+    cur_px = mouse_x - (c->hotx * ui_k * c->scale) / 10000;
+    cur_py = mouse_y - (c->hoty * ui_k * c->scale) / 10000;
+
+    for (int j = 0; j < cur_h; j++) {
+        int sy = j * c->h / cur_h;
+        for (int i = 0; i < cur_w; i++) {
             int x = cur_px + i;
             int y = cur_py + j;
             if (x < 0 || y < 0 || (u32)x >= scr_w || (u32)y >= scr_h) continue;
 
             u32 dst = get_px(x, y);
-            cur_save[j * CUR_W + i] = dst;
+            cur_save[j * cur_w + i] = dst;
 
-            int si = (j * CUR_W + i) * 4;
-            u8 r = cursor32_rgba[si];
-            u8 g = cursor32_rgba[si + 1];
-            u8 b = cursor32_rgba[si + 2];
-            u8 a = cursor32_rgba[si + 3];
+            int sx = i * c->w / cur_w;
+            int si = (sy * c->w + sx) * 4;
+            u8 r = c->px[si];
+            u8 g = c->px[si + 1];
+            u8 b = c->px[si + 2];
+            u8 a = c->px[si + 3];
             if (a) px(x, y, blend(dst, r, g, b, a));
         }
     }
@@ -624,6 +655,14 @@ static void cursor_update(void) {
 static void cursor_redraw(void) {
     cursor_erase();
     cursor_draw();
+}
+
+static void cursor_set(int shape) {
+    if (shape == cur_shape) return;
+    int was_drawn = cur_drawn;
+    if (was_drawn) cursor_erase();
+    cur_shape = shape;
+    if (was_drawn) cursor_draw();
 }
 
 static char pwd_input[PWD_MAX + 1];
@@ -756,16 +795,14 @@ static void run_boot_animation(void) {
 
     for (int f = 0; f < LOAD_FRAMES; f++) {
         mouse_poll();
-        cursor_erase();
+        mouse_moved = 0;
 
         draw_ring_box(ring_buf, box, bcx, bcy, box_y, r, th, phase, white);
         gfx_blit_buffer(ring_buf, box, box_x, box_y, box, box);
         phase = (phase + ARC_STEP) % 360;
 
-        cursor_draw();
         delay_us(ARC_DELAY_US);
     }
-    cursor_erase();
 }
 
 static void login_screen(void) {
@@ -782,6 +819,8 @@ static void login_screen(void) {
 
     pwd_len = 0;
     pwd_input[0] = 0;
+
+    cursor_set(CURSOR_BEAM);
 
     draw_login_static();
     cursor_redraw();
@@ -877,6 +916,7 @@ void kernel_main(u32 lfb, u32 width, u32 height, u32 bpp, u32 pitch) {
 
     login_screen();
 
+    cursor_set(CURSOR_ARROW);
     cursor_erase();
     draw_welcome();
     cursor_redraw();

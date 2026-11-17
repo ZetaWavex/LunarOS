@@ -1,6 +1,6 @@
 KERNEL_OFFSET  equ 0x10000
 VBE_INFO_ADDR  equ 0x8000
-VESA_MODE      equ 0x114
+VESA_MODE      equ 0x11A
 BOOT_DRV       equ 0x7DFE
 
 [org 0x9000]
