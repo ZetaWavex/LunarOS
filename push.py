@@ -26,7 +26,7 @@ def run(cmd, desc, capture=False):
     return ""
 
 def cleanup():
-    run(["git", "rm", "-r", "--cached", "."], "Cleaning git index")
+    run(["git", "rm", "-r", "--cached", "."], "Cleaning git index", capture=False)
 
 def check_identity():
     name = run(["git", "config", "user.name"], "Checking user.name", capture=True)
