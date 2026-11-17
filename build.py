@@ -123,6 +123,10 @@ def build():
     kernel_sectors = (kernel_size + 511) // 512
 
     k_lba = 1 + STAGE2_SECTORS
+    if k_lba + kernel_sectors > PWD_LBA:
+        print(f"[ERROR] kernel overlaps password sector "
+              f"(kernel ends at LBA {k_lba + kernel_sectors}, PWD_LBA={PWD_LBA})")
+        sys.exit(1)
     run([NASM, f"-DK_LBA={k_lba}", f"-DKERNEL_SECTORS={kernel_sectors}",
          "-f", "bin", "-i", SRC + "\\",
          os.path.join(SRC, "stage2.asm"),
@@ -134,6 +138,8 @@ def build():
 
     pad_to_sectors(os.path.join(BUILD, "stage2.bin"), STAGE2_SECTORS)
     s2_size = os.path.getsize(os.path.join(BUILD, "stage2.bin"))
+
+    pwd_path = make_password_file()
 
     with open(os.path.join(BUILD, "os-image.img"), "wb") as img:
         with open(os.path.join(BUILD, "boot.bin"), "rb") as f:
@@ -147,11 +153,22 @@ def build():
         if sector_rem:
             img.write(b"\x00" * (512 - sector_rem))
 
+        pwd_lba_off = PWD_LBA * 512
+        cur = img.tell()
+        if cur < pwd_lba_off:
+            img.write(b"\x00" * (pwd_lba_off - cur))
+        with open(pwd_path, "rb") as f:
+            data = f.read()
+        img.write(data)
+        if len(data) < 512:
+            img.write(b"\x00" * (512 - len(data)))
+
     total = os.path.getsize(os.path.join(BUILD, "os-image.img"))
     print(f"\n[DONE] os-image.img: {total} bytes ({total//512} sectors)")
     print(f"  boot.bin:    {boot_size:>7} B  (MBR, LBA 0)")
     print(f"  stage2.bin:  {s2_size_before:>7} B -> padded {s2_size} B ({STAGE2_SECTORS} sectors, LBA 1-{STAGE2_SECTORS})")
     print(f"  kernel.bin:  {kernel_size:>7} B  ({kernel_sectors} sectors, LBA {k_lba}+)")
+    print(f"  {PWD_FILE}: {os.path.getsize(pwd_path):>6} B  (LBA {PWD_LBA})")
     if total % 512 == 0:
         print(f"  image aligned to 512-byte sectors: OK")
 

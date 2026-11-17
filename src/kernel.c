@@ -10,7 +10,7 @@
 
 #define LOAD_FRAMES  190
 #define PWD_MAX       24
-#define PWD_LBA       64
+#define PWD_LBA       128
 
 static inline void outb(u16 port, u8 val) {
     __asm__ __volatile__("outb %0, %1" :: "a"(val), "Nd"(port));
@@ -364,6 +364,7 @@ static void load_password(void) {
         if (c >= '0' && c <= '9') { pwd_stored[n++] = c; continue; }
         if (c >= 'a' && c <= 'f') { pwd_stored[n++] = c; continue; }
         if (c >= 'A' && c <= 'F') { pwd_stored[n++] = (char)(c - 'A' + 'a'); continue; }
+        n = 0;
         break;
     }
     pwd_stored[n] = 0;
