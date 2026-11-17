@@ -547,57 +547,40 @@ static void fill_rect(int x, int y, int w, int h, u32 c) {
             px(x + i, y + j, c);
 }
 
-#define CUR_W 12
-#define CUR_H 19
+#include "cursor_data.h"
 
-static const u8 cursor_mask[CUR_H][CUR_W] = {
-    {1,0,0,0,0,0,0,0,0,0,0,0},
-    {1,1,0,0,0,0,0,0,0,0,0,0},
-    {1,1,1,0,0,0,0,0,0,0,0,0},
-    {1,1,1,1,0,0,0,0,0,0,0,0},
-    {1,1,1,1,1,0,0,0,0,0,0,0},
-    {1,1,1,1,1,1,0,0,0,0,0,0},
-    {1,1,1,1,1,1,1,0,0,0,0,0},
-    {1,1,1,1,1,1,1,1,0,0,0,0},
-    {1,1,1,1,1,1,1,1,1,0,0,0},
-    {1,1,1,1,1,1,1,1,1,1,0,0},
-    {1,1,1,1,1,1,1,1,1,1,1,0},
-    {0,1,1,1,1,1,1,1,1,1,1,0},
-    {0,0,1,1,1,1,1,1,1,1,1,0},
-    {0,0,0,1,1,1,1,1,1,1,1,0},
-    {0,0,0,0,1,1,1,1,1,1,1,0},
-    {0,0,0,0,0,1,1,1,1,1,0,0},
-    {0,0,0,0,0,0,1,1,1,0,0,0},
-    {0,0,0,0,0,0,0,1,0,0,0,0},
-    {0,0,0,0,0,0,0,0,0,0,0,0},
-};
-
-static const u8 cursor_fill[CUR_H][CUR_W] = {
-    {1,0,0,0,0,0,0,0,0,0,0,0},
-    {1,1,0,0,0,0,0,0,0,0,0,0},
-    {1,1,1,0,0,0,0,0,0,0,0,0},
-    {1,1,1,1,0,0,0,0,0,0,0,0},
-    {1,1,1,1,1,0,0,0,0,0,0,0},
-    {1,1,1,1,1,1,0,0,0,0,0,0},
-    {1,1,1,1,1,1,1,0,0,0,0,0},
-    {1,1,1,1,1,1,1,1,0,0,0,0},
-    {1,1,1,1,1,1,1,1,1,0,0,0},
-    {1,1,1,1,1,1,1,1,1,1,0,0},
-    {0,0,0,0,0,0,0,0,0,0,0,0},
-    {0,1,1,1,1,1,1,1,1,1,0,0},
-    {0,0,1,1,1,1,1,1,1,0,0,0},
-    {0,0,0,1,1,1,1,1,1,0,0,0},
-    {0,0,0,0,1,1,1,1,0,0,0,0},
-    {0,0,0,0,0,1,1,0,0,0,0,0},
-    {0,0,0,0,0,0,1,0,0,0,0,0},
-    {0,0,0,0,0,0,0,0,0,0,0,0},
-    {0,0,0,0,0,0,0,0,0,0,0,0},
-};
+#define CUR_W CURSOR_48_W
+#define CUR_H CURSOR_48_H
 
 static int cur_drawn = 0;
 static int cur_px = 0;
 static int cur_py = 0;
 static u32 cur_save[CUR_H * CUR_W];
+
+static u32 blend(u32 dst, u8 r, u8 g, u8 b, u8 a) {
+    if (a == 0) return dst;
+    if (a == 255) return pack(r, g, b);
+
+    u8 dr, dg, db;
+    if (fb_bpp == 32) {
+        dr = (u8)((dst >> 16) & 0xFF);
+        dg = (u8)((dst >> 8) & 0xFF);
+        db = (u8)(dst & 0xFF);
+    } else if (fb_bpp == 24) {
+        dr = (u8)((dst >> 16) & 0xFF);
+        dg = (u8)((dst >> 8) & 0xFF);
+        db = (u8)(dst & 0xFF);
+    } else {
+        dr = (u8)(((dst >> 11) & 0x1F) << 3);
+        dg = (u8)(((dst >> 5) & 0x3F) << 2);
+        db = (u8)((dst & 0x1F) << 3);
+    }
+
+    u8 nr = (u8)((r * a + dr * (255 - a)) / 255);
+    u8 ng = (u8)((g * a + dg * (255 - a)) / 255);
+    u8 nb = (u8)((b * a + db * (255 - a)) / 255);
+    return pack(nr, ng, nb);
+}
 
 static void cursor_erase(void) {
     if (!cur_drawn) return;
@@ -608,18 +591,24 @@ static void cursor_erase(void) {
 }
 
 static void cursor_draw(void) {
-    cur_px = mouse_x;
-    cur_py = mouse_y;
+    cur_px = mouse_x - CURSOR_48_HOTX;
+    cur_py = mouse_y - CURSOR_48_HOTY;
 
     for (int j = 0; j < CUR_H; j++) {
         for (int i = 0; i < CUR_W; i++) {
             int x = cur_px + i;
             int y = cur_py + j;
             if (x < 0 || y < 0 || (u32)x >= scr_w || (u32)y >= scr_h) continue;
-            cur_save[j * CUR_W + i] = get_px(x, y);
-            if (cursor_mask[j][i]) {
-                px(x, y, cursor_fill[j][i] ? pack(255, 255, 255) : pack(20, 20, 20));
-            }
+
+            u32 dst = get_px(x, y);
+            cur_save[j * CUR_W + i] = dst;
+
+            int si = (j * CUR_W + i) * 4;
+            u8 r = cursor48_rgba[si];
+            u8 g = cursor48_rgba[si + 1];
+            u8 b = cursor48_rgba[si + 2];
+            u8 a = cursor48_rgba[si + 3];
+            if (a) px(x, y, blend(dst, r, g, b, a));
         }
     }
     cur_drawn = 1;
