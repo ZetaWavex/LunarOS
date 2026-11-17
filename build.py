@@ -166,7 +166,7 @@ def make_cursor_header():
     aw, ah, ahx, ahy, apx = parse_cur(arrow_src, 32)
 
     bw, bh, bhx, bhy, bpx = parse_cur(beam_src, 128)
-    bx, by, bw, bh, bpx = crop_to_content(bw, bh, bpx)
+    _, _, bw, bh, bpx = crop_to_content(bw, bh, bpx)
     bhx = bw // 2
     bhy = bh // 2
 

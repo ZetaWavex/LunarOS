@@ -1,6 +1,7 @@
 import os
 import subprocess
 import sys
+import time
 
 ROOT = os.path.dirname(os.path.abspath(__file__))
 REMOTE = "origin"
@@ -40,7 +41,8 @@ def check_identity():
 
 
 def main():
-    msg = sys.argv[1] if len(sys.argv) > 1 else "update"
+    t = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime()) 
+    msg = sys.argv[1] if len(sys.argv) > 1 else f"update {t}"
 
     cleanup()
 
