@@ -25,6 +25,8 @@ def run(cmd, desc, capture=False):
         sys.exit(1)
     return ""
 
+def cleanup():
+    run(["git", "rm", "-r", "--cached", "."], "Cleaning git index")
 
 def check_identity():
     name = run(["git", "config", "user.name"], "Checking user.name", capture=True)
@@ -39,6 +41,8 @@ def check_identity():
 
 def main():
     msg = sys.argv[1] if len(sys.argv) > 1 else "update"
+
+    cleanup()
 
     check_identity()
 

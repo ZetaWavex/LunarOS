@@ -566,8 +566,10 @@ static const cursor_img_t cursor_imgs[2] = {
       CURSOR_BEAM_HOTX, CURSOR_BEAM_HOTY, 45 },
 };
 
-#define CUR_BUF_W (CURSOR_MAX_W * 150 / 100 + 1)
-#define CUR_BUF_H (CURSOR_MAX_H * 150 / 100 + 1)
+#define UI_K_MAX 200
+
+#define CUR_BUF_W (CURSOR_MAX_W * UI_K_MAX / 100 + 2)
+#define CUR_BUF_H (CURSOR_MAX_H * UI_K_MAX / 100 + 2)
 
 static int cur_shape = CURSOR_ARROW;
 static int cur_drawn = 0;
@@ -895,7 +897,7 @@ void kernel_main(u32 lfb, u32 width, u32 height, u32 bpp, u32 pitch) {
 
     ui_k = (int)(scr_h * 100u / 600u);
     if (ui_k < 60) ui_k = 60;
-    if (ui_k > 150) ui_k = 150;
+    if (ui_k > UI_K_MAX) ui_k = UI_K_MAX;
 
     serial_puts("[KERNEL] gfx ready ");
     serial_putnum(scr_w);
