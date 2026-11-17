@@ -1,3 +1,4 @@
+import hashlib
 import os
 import struct
 import subprocess
@@ -9,9 +10,6 @@ SRC = os.path.join(ROOT, "src")
 BUILD = os.path.join(ROOT, "build")
 
 NASM = r"d:\NewX\OS\Try 5\Program\NASM\nasm.exe"
-
-sys.path.insert(0, ROOT)
-from BM import dfn_encode
 
 DEFAULT_PASSWORD = "1234"
 PWD_LBA = 128
@@ -70,7 +68,7 @@ def pad_to_sectors(path, sectors):
 
 
 def make_password_file():
-    encoded = dfn_encode(DEFAULT_PASSWORD, 1234)
+    encoded = hashlib.sha256(DEFAULT_PASSWORD.encode("utf-8")).hexdigest()
     path = os.path.join(BUILD, PWD_FILE)
     with open(path, "wb") as f:
         f.write(encoded.encode("ascii"))
