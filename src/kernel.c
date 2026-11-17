@@ -927,6 +927,6 @@ void kernel_main(u32 lfb, u32 width, u32 height, u32 bpp, u32 pitch) {
     while (1) {
         mouse_poll();
         cursor_update();
-        __asm__ __volatile__("hlt");
+        delay_us(1000);
     }
 }
