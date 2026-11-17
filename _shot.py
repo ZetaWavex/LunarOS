@@ -8,7 +8,7 @@ ROOT = os.path.dirname(os.path.abspath(__file__))
 QEMU = os.path.join(ROOT, "Program", "QEMU", "qemu-system-i386.exe")
 IMAGE = os.path.join(ROOT, "build", "os-image.img")
 SERIAL = os.path.join(ROOT, "build", "serial.log")
-MON = 45457
+MON = 45458
 
 
 def main():
@@ -37,17 +37,12 @@ def main():
             pass
 
     time.sleep(9.5)
+    mon("screendump build\\c0.ppm", 0.8)
 
-    for i in range(8):
-        mon("mouse_move 5 3", 0.06)
-    time.sleep(0.4)
-
-    for k in ("1", "2", "3", "4"):
-        mon(f"sendkey {k}", 0.2)
-    time.sleep(0.4)
-    mon("sendkey ret", 0.6)
-    time.sleep(1.2)
-    mon("screendump build\\done.ppm", 0.8)
+    for i in range(10):
+        mon("mouse_move 5 4", 0.06)
+    time.sleep(0.5)
+    mon("screendump build\\c1.ppm", 0.8)
 
     s.close()
     p.terminate()
