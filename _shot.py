@@ -37,12 +37,17 @@ def main():
             pass
 
     time.sleep(9.5)
-    mon("screendump build\\c0.ppm", 0.8)
 
-    for i in range(10):
-        mon("mouse_move 5 4", 0.06)
-    time.sleep(0.5)
-    mon("screendump build\\c1.ppm", 0.8)
+    for i in range(6):
+        mon("mouse_move 5 6", 0.06)
+    time.sleep(0.3)
+
+    for k in ("1", "2", "3", "4"):
+        mon(f"sendkey {k}", 0.2)
+    time.sleep(0.4)
+    mon("sendkey ret", 0.6)
+    time.sleep(1.2)
+    mon("screendump build\\c2.ppm", 0.8)
 
     s.close()
     p.terminate()
