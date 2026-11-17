@@ -549,8 +549,8 @@ static void fill_rect(int x, int y, int w, int h, u32 c) {
 
 #include "cursor_data.h"
 
-#define CUR_W CURSOR_48_W
-#define CUR_H CURSOR_48_H
+#define CUR_W CURSOR_32_W
+#define CUR_H CURSOR_32_H
 
 static int cur_drawn = 0;
 static int cur_px = 0;
@@ -591,8 +591,8 @@ static void cursor_erase(void) {
 }
 
 static void cursor_draw(void) {
-    cur_px = mouse_x - CURSOR_48_HOTX;
-    cur_py = mouse_y - CURSOR_48_HOTY;
+    cur_px = mouse_x - CURSOR_32_HOTX;
+    cur_py = mouse_y - CURSOR_32_HOTY;
 
     for (int j = 0; j < CUR_H; j++) {
         for (int i = 0; i < CUR_W; i++) {
@@ -604,10 +604,10 @@ static void cursor_draw(void) {
             cur_save[j * CUR_W + i] = dst;
 
             int si = (j * CUR_W + i) * 4;
-            u8 r = cursor48_rgba[si];
-            u8 g = cursor48_rgba[si + 1];
-            u8 b = cursor48_rgba[si + 2];
-            u8 a = cursor48_rgba[si + 3];
+            u8 r = cursor32_rgba[si];
+            u8 g = cursor32_rgba[si + 1];
+            u8 b = cursor32_rgba[si + 2];
+            u8 a = cursor32_rgba[si + 3];
             if (a) px(x, y, blend(dst, r, g, b, a));
         }
     }
