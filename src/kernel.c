@@ -925,6 +925,7 @@ void kernel_main(u32 lfb, u32 width, u32 height, u32 bpp, u32 pitch) {
     serial_puts("[KERNEL] logged in\n");
 
     while (1) {
+        kbd_poll();
         mouse_poll();
         cursor_update();
         delay_us(1000);
