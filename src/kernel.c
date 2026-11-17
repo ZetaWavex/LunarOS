@@ -105,6 +105,15 @@ static void px(int x, int y, u32 c) {
     }
 }
 
+static u32 get_px(int x, int y) {
+    if (x < 0 || y < 0 || (u32)x >= scr_w || (u32)y >= scr_h) return 0;
+    u32 off = (u32)y * fb_pitch + (u32)x * (fb_bpp / 8);
+    if (fb_bpp == 32) return *(u32 *)(fb + off);
+    if (fb_bpp == 24)
+        return (u32)fb[off] | ((u32)fb[off + 1] << 8) | ((u32)fb[off + 2] << 16);
+    return (u32)(*(u16 *)(fb + off));
+}
+
 static void bg_rgb(int y, u8 *r, u8 *g, u8 *b) {
     if (y < 0) y = 0;
     if ((u32)y >= scr_h) y = (int)scr_h - 1;
@@ -120,6 +129,8 @@ static u32 bg_at(int y) {
     bg_rgb(y, &r, &g, &b);
     return pack(r, g, b);
 }
+
+static void cursor_redraw(void);
 
 static void fill_bg_rect(int x, int y, int w, int h) {
     for (int j = 0; j < h; j++) {
@@ -385,8 +396,95 @@ static int password_match(const char *pw) {
 
 static u8 kbd_status(void) { return inb(0x64); }
 
+static void kbd_wait_write(void) {
+    u32 guard = 0x10000u;
+    while (guard-- > 0) {
+        if (!(inb(0x64) & 0x02)) return;
+    }
+}
+
+static void kbd_wait_read(void) {
+    u32 guard = 0x10000u;
+    while (guard-- > 0) {
+        if (inb(0x64) & 0x01) return;
+    }
+}
+
+static void kbd_cmd(u8 c) {
+    kbd_wait_write();
+    outb(0x64, c);
+}
+
+static void mouse_write(u8 v) {
+    kbd_cmd(0xD4);
+    kbd_wait_write();
+    outb(0x60, v);
+}
+
+static void mouse_init(void) {
+    kbd_cmd(0xA8);
+    kbd_cmd(0x20);
+    kbd_wait_read();
+    u8 cfg = inb(0x60);
+    cfg = (u8)((cfg | 0x02) & ~0x20);
+    kbd_cmd(0x60);
+    kbd_wait_write();
+    outb(0x60, cfg);
+
+    mouse_write(0xF6);
+    kbd_wait_read();
+    inb(0x60);
+
+    mouse_write(0xF4);
+    kbd_wait_read();
+    inb(0x60);
+
+    while (inb(0x64) & 0x01) inb(0x60);
+}
+
+static int  mouse_cycle = 0;
+static u8   mouse_buf[3];
+static int  mouse_x = 0;
+static int  mouse_y = 0;
+static int  mouse_moved = 0;
+static int  mouse_buttons = 0;
+
+static void mouse_poll(void) {
+    u32 guard = 64;
+    while (guard-- > 0) {
+        u8 st = inb(0x64);
+        if (!(st & 0x01)) break;
+        if (!(st & 0x20)) break;
+
+        u8 data = inb(0x60);
+        if (mouse_cycle == 0 && !(data & 0x08)) continue;
+
+        mouse_buf[mouse_cycle++] = data;
+        if (mouse_cycle < 3) continue;
+        mouse_cycle = 0;
+
+        int dx = (int)mouse_buf[1] - ((mouse_buf[0] & 0x10) ? 256 : 0);
+        int dy = (int)mouse_buf[2] - ((mouse_buf[0] & 0x20) ? 256 : 0);
+
+        if (dx || dy) {
+            mouse_x += dx;
+            mouse_y -= dy;
+            if (mouse_x < 0) mouse_x = 0;
+            if (mouse_y < 0) mouse_y = 0;
+            if (mouse_x > (int)scr_w - 1) mouse_x = (int)scr_w - 1;
+            if (mouse_y > (int)scr_h - 1) mouse_y = (int)scr_h - 1;
+            mouse_moved = 1;
+        }
+
+        int btns = mouse_buf[0] & 0x07;
+        if ((btns & 0x01) && !(mouse_buttons & 0x01)) mouse_moved = 1;
+        mouse_buttons = btns;
+    }
+}
+
 static char kbd_poll(void) {
     if (!(kbd_status() & 0x01)) return 0;
+    if (kbd_status() & 0x20) return 0;
     u8 sc = inb(0x60);
     if (sc & 0x80) return 0;
     if (sc >= 0x02 && sc <= 0x0B) {
@@ -447,6 +545,96 @@ static void fill_rect(int x, int y, int w, int h, u32 c) {
     for (int j = 0; j < h; j++)
         for (int i = 0; i < w; i++)
             px(x + i, y + j, c);
+}
+
+#define CUR_W 12
+#define CUR_H 19
+
+static const u8 cursor_mask[CUR_H][CUR_W] = {
+    {1,0,0,0,0,0,0,0,0,0,0,0},
+    {1,1,0,0,0,0,0,0,0,0,0,0},
+    {1,1,1,0,0,0,0,0,0,0,0,0},
+    {1,1,1,1,0,0,0,0,0,0,0,0},
+    {1,1,1,1,1,0,0,0,0,0,0,0},
+    {1,1,1,1,1,1,0,0,0,0,0,0},
+    {1,1,1,1,1,1,1,0,0,0,0,0},
+    {1,1,1,1,1,1,1,1,0,0,0,0},
+    {1,1,1,1,1,1,1,1,1,0,0,0},
+    {1,1,1,1,1,1,1,1,1,1,0,0},
+    {1,1,1,1,1,1,1,1,1,1,1,0},
+    {0,1,1,1,1,1,1,1,1,1,1,0},
+    {0,0,1,1,1,1,1,1,1,1,1,0},
+    {0,0,0,1,1,1,1,1,1,1,1,0},
+    {0,0,0,0,1,1,1,1,1,1,1,0},
+    {0,0,0,0,0,1,1,1,1,1,0,0},
+    {0,0,0,0,0,0,1,1,1,0,0,0},
+    {0,0,0,0,0,0,0,1,0,0,0,0},
+    {0,0,0,0,0,0,0,0,0,0,0,0},
+};
+
+static const u8 cursor_fill[CUR_H][CUR_W] = {
+    {1,0,0,0,0,0,0,0,0,0,0,0},
+    {1,1,0,0,0,0,0,0,0,0,0,0},
+    {1,1,1,0,0,0,0,0,0,0,0,0},
+    {1,1,1,1,0,0,0,0,0,0,0,0},
+    {1,1,1,1,1,0,0,0,0,0,0,0},
+    {1,1,1,1,1,1,0,0,0,0,0,0},
+    {1,1,1,1,1,1,1,0,0,0,0,0},
+    {1,1,1,1,1,1,1,1,0,0,0,0},
+    {1,1,1,1,1,1,1,1,1,0,0,0},
+    {1,1,1,1,1,1,1,1,1,1,0,0},
+    {0,0,0,0,0,0,0,0,0,0,0,0},
+    {0,1,1,1,1,1,1,1,1,1,0,0},
+    {0,0,1,1,1,1,1,1,1,0,0,0},
+    {0,0,0,1,1,1,1,1,1,0,0,0},
+    {0,0,0,0,1,1,1,1,0,0,0,0},
+    {0,0,0,0,0,1,1,0,0,0,0,0},
+    {0,0,0,0,0,0,1,0,0,0,0,0},
+    {0,0,0,0,0,0,0,0,0,0,0,0},
+    {0,0,0,0,0,0,0,0,0,0,0,0},
+};
+
+static int cur_drawn = 0;
+static int cur_px = 0;
+static int cur_py = 0;
+static u32 cur_save[CUR_H * CUR_W];
+
+static void cursor_erase(void) {
+    if (!cur_drawn) return;
+    for (int j = 0; j < CUR_H; j++)
+        for (int i = 0; i < CUR_W; i++)
+            px(cur_px + i, cur_py + j, cur_save[j * CUR_W + i]);
+    cur_drawn = 0;
+}
+
+static void cursor_draw(void) {
+    cur_px = mouse_x;
+    cur_py = mouse_y;
+
+    for (int j = 0; j < CUR_H; j++) {
+        for (int i = 0; i < CUR_W; i++) {
+            int x = cur_px + i;
+            int y = cur_py + j;
+            if (x < 0 || y < 0 || (u32)x >= scr_w || (u32)y >= scr_h) continue;
+            cur_save[j * CUR_W + i] = get_px(x, y);
+            if (cursor_mask[j][i]) {
+                px(x, y, cursor_fill[j][i] ? pack(255, 255, 255) : pack(20, 20, 20));
+            }
+        }
+    }
+    cur_drawn = 1;
+}
+
+static void cursor_update(void) {
+    if (!mouse_moved) return;
+    mouse_moved = 0;
+    cursor_erase();
+    cursor_draw();
+}
+
+static void cursor_redraw(void) {
+    cursor_erase();
+    cursor_draw();
 }
 
 static char pwd_input[PWD_MAX + 1];
@@ -578,11 +766,17 @@ static void run_boot_animation(void) {
     int bcy = box / 2;
 
     for (int f = 0; f < LOAD_FRAMES; f++) {
+        mouse_poll();
+        cursor_erase();
+
         draw_ring_box(ring_buf, box, bcx, bcy, box_y, r, th, phase, white);
         gfx_blit_buffer(ring_buf, box, box_x, box_y, box, box);
         phase = (phase + ARC_STEP) % 360;
+
+        cursor_draw();
         delay_us(ARC_DELAY_US);
     }
+    cursor_erase();
 }
 
 static void login_screen(void) {
@@ -601,12 +795,17 @@ static void login_screen(void) {
     pwd_input[0] = 0;
 
     draw_login_static();
+    cursor_redraw();
 
     int msg_y = box_y + box_h + 18 * k / 100;
     int msg_h = 16 * sc_msg + 4;
     fill_bg_rect(0, msg_y - 2, (int)scr_w, msg_h);
+    cursor_redraw();
 
     while (1) {
+        mouse_poll();
+        cursor_update();
+
         char ch = kbd_poll();
         if (!ch) continue;
 
@@ -620,8 +819,10 @@ static void login_screen(void) {
             serial_puts("[LOGIN] failed\n");
             pwd_len = 0;
             pwd_input[0] = 0;
+            cursor_erase();
             draw_login_static();
             draw_login_message("Wrong password, try again", 1);
+            cursor_redraw();
             continue;
         }
 
@@ -629,8 +830,10 @@ static void login_screen(void) {
             if (pwd_len > 0) {
                 pwd_len--;
                 pwd_input[pwd_len] = 0;
+                cursor_erase();
                 draw_login_static();
                 fill_bg_rect(0, msg_y - 2, (int)scr_w, msg_h);
+                cursor_redraw();
             }
             continue;
         }
@@ -638,8 +841,10 @@ static void login_screen(void) {
         if (pwd_len < PWD_MAX) {
             pwd_input[pwd_len++] = ch;
             pwd_input[pwd_len] = 0;
+            cursor_erase();
             draw_login_static();
             fill_bg_rect(0, msg_y - 2, (int)scr_w, msg_h);
+            cursor_redraw();
         }
     }
 }
@@ -674,15 +879,22 @@ void kernel_main(u32 lfb, u32 width, u32 height, u32 bpp, u32 pitch) {
 
     load_password();
 
+    mouse_x = (int)scr_w / 2;
+    mouse_y = (int)scr_h / 2;
+    mouse_init();
+
     run_boot_animation();
     serial_puts("[KERNEL] loading finished, entering login\n");
 
     login_screen();
 
     draw_welcome();
+    cursor_redraw();
     serial_puts("[KERNEL] logged in\n");
 
     while (1) {
+        mouse_poll();
+        cursor_update();
         __asm__ __volatile__("hlt");
     }
 }
