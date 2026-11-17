@@ -1,30 +1,38 @@
 import random
 import hashlib
 
-def dfn_encode(text, key):
-    # 生成随机 salt 值
-    salt = random.randint(1, 100)
-    # 使用 SHA-256 进行散列
+def dfn_encode(text, salt):
     hashed_text = hashlib.sha256(text.encode()).hexdigest()
-    # 使用 salt 值进行加密
     encrypted_text = hashed_text + str(salt)
     return encrypted_text
 
 def dfn_decode(encrypted_text):
-    # 分离 salt 值
     salt = int(encrypted_text[-1])
-    # 使用 SHA-256 进行反散列
     hashed_text = encrypted_text[:-1]
     decoded_text = hashlib.sha256(hashed_text.encode()).hexdigest()
     return decoded_text
 
 def main():
-    text = input("请输入要编码的文本：")
-    key = int(input("请输入编码密钥："))
-    encrypted_text = dfn_encode(text, key)
-    print("编码后的文本：", encrypted_text)
-    decoded_text = dfn_decode(encrypted_text)
-    print("解码后的文本：", decoded_text)
+    while True:
+        print("DFN 编码器")
+        print("1. 编码")
+        print("2. 解码")
+        print("3. 退出")
+        choice = input("请输入你的选择：")
+        if choice == "1":
+            text = input("请输入要编码的文本：")
+            salt = random.randint(1, 100)
+            encrypted_text = dfn_encode(text, salt)
+            print("编码后的文本：", encrypted_text)
+        elif choice == "2":
+            encrypted_text = input("请输入要解码的文本：")
+            decoded_text = dfn_decode(encrypted_text)
+            print("解码后的文本：", decoded_text)
+        elif choice == "3":
+            print("退出DFN编码器")
+            break
+        else:
+            print("请输入正确的选择")
 
 if __name__ == "__main__":
     main()

@@ -189,6 +189,36 @@ static int sin_q4(int q4) {
     return a0 + ((a1 - a0) * f) / 4;
 }
 
+static int arc_span(int start_a, int end_a) {
+    int span = end_a - start_a;
+    if (span < 0) span += 360;
+    if (span == 0) span = 360;
+    if (span > 360) span = 360;
+    return span;
+}
+
+void gfx_draw_ellipse_arc(int cx, int cy, int rx, int ry, int start_a, int end_a,
+                          color_t c, int thickness) {
+    int span = arc_span(start_a, end_a);
+
+    for (int t = 0; t <= thickness; t++) {
+        int xr = rx - thickness / 2 + t;
+        int yr = ry - thickness / 2 + t;
+        if (xr < 1) xr = 1;
+        if (yr < 1) yr = 1;
+
+        int big = xr > yr ? xr : yr;
+        int steps = (span * big) / 57 + 1;
+        if (steps < span) steps = span;
+        for (int k = 0; k <= steps; k++) {
+            int q4 = (start_a * 4) + (span * 4 * k) / steps;
+            int x = (int)(((long)cos_q4(q4) * xr) / 1000);
+            int y = (int)(((long)sin_q4(q4) * yr) / 1000);
+            gfx_putpixel(cx + x, cy + y, c);
+        }
+    }
+}
+
 void gfx_draw_arc(int cx, int cy, int r, int start_a, int end_a,
                   color_t c, int thickness) {
     int span = end_a - start_a;

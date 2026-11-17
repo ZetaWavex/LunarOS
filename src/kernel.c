@@ -83,7 +83,11 @@ static u32 fb_pitch;
 static u32 fb_bpp;
 static u32 scr_w;
 static u32 scr_h;
-static int ui_k = 100;
+static int ui_kx = 100;
+static int ui_ky = 100;
+
+static int scx(int v) { return v * ui_kx / 100; }
+static int scy(int v) { return v * ui_ky / 100; }
 
 static u32 pack(u8 r, u8 g, u8 b) {
     if (fb_bpp == 32) return ((u32)r << 16) | ((u32)g << 8) | (u32)b;
@@ -147,13 +151,15 @@ static void draw_background(void) {
     }
 }
 
-static void draw_logo(int cx, int cy, int size) {
-    int x0 = cx - size / 2;
-    int y0 = cy - size / 2;
-    for (int j = 0; j < size; j++) {
-        int sy = (int)((long)j * LOGO_H / size);
-        for (int i = 0; i < size; i++) {
-            int sx = (int)((long)i * LOGO_W / size);
+static void draw_logo(int cx, int cy, int w, int h) {
+    int x0 = cx - w / 2;
+    int y0 = cy - h / 2;
+    if (w < 1) w = 1;
+    if (h < 1) h = 1;
+    for (int j = 0; j < h; j++) {
+        int sy = (int)((long)j * LOGO_H / h);
+        for (int i = 0; i < w; i++) {
+            int sx = (int)((long)i * LOGO_W / w);
             u8 idx = logo_idx[sy * LOGO_W + sx];
             u8 a = logo_pal[idx * 4 + 3];
             if (a == 0) continue;
@@ -172,32 +178,36 @@ static void draw_logo(int cx, int cy, int size) {
     }
 }
 
-static int text_track(int pct) {
-    int t = (6 * pct + 50) / 100;
+static int text_track(int pctx) {
+    int t = (6 * pctx + 50) / 100;
     return t < 2 ? 2 : t;
 }
 
-static int text_width(int pct) {
-    int track = text_track(pct);
+static int text_width(int pctx) {
+    int track = text_track(pctx);
     int total = 0;
     for (int i = 0; i < ASC48_TEXT_COUNT; i++)
-        total += (asc48_text_table[i].w * pct + 50) / 100 + track;
+        total += (asc48_text_table[i].w * pctx + 50) / 100 + track;
     total -= track;
     return total;
 }
 
-static void draw_text_at(int y, int pct) {
-    int track = text_track(pct);
-    int total = text_width(pct);
+static int text_height(int pcty) {
+    int h = (ASC48_CELL * pcty + 50) / 100;
+    return h < 1 ? 1 : h;
+}
+
+static void draw_text_at(int y, int pctx, int pcty) {
+    int track = text_track(pctx);
+    int total = text_width(pctx);
     int x = (int)scr_w / 2 - total / 2;
-    int h = (ASC48_CELL * pct + 50) / 100;
-    if (h < 1) h = 1;
+    int h = text_height(pcty);
 
     u32 fg = pack(235, 235, 235);
     for (int i = 0; i < ASC48_TEXT_COUNT; i++) {
         const asc48_glyph_t *g = &asc48_text_table[i];
         const u8 *bits = asc48_text_bits + (u32)i * ASC48_GLYPH_BYTES;
-        int gw = (g->w * pct + 50) / 100;
+        int gw = (g->w * pctx + 50) / 100;
         if (gw < 1) gw = 1;
         for (int row = 0; row < h; row++) {
             int sy = row * ASC48_CELL / h;
@@ -212,17 +222,18 @@ static void draw_text_at(int y, int pct) {
     }
 }
 
-static void draw_ring_box(u32 *buf, int box, int bcx, int bcy,
-                          int base_y, int r, int th, int phase, u32 color) {
-    for (int j = 0; j < box; j++) {
+static void draw_ring_box(u32 *buf, int bw, int bh, int bcx, int bcy,
+                          int base_y, int rx, int ry, int th, int phase, u32 color) {
+    int stride = bw;
+    for (int j = 0; j < bh; j++) {
         u32 c = bg_at(base_y + j);
-        for (int i = 0; i < box; i++)
-            buf[j * box + i] = c;
+        for (int i = 0; i < bw; i++)
+            buf[j * stride + i] = c;
     }
-    gfx_set_target(buf, box, box, box);
-    gfx_draw_arc(bcx, bcy, r, phase, phase + 70, color, th);
-    gfx_draw_arc(bcx, bcy, r, phase + 120, phase + 190, color, th);
-    gfx_draw_arc(bcx, bcy, r, phase + 240, phase + 310, color, th);
+    gfx_set_target(buf, stride, bw, bh);
+    gfx_draw_ellipse_arc(bcx, bcy, rx, ry, phase, phase + 70, color, th);
+    gfx_draw_ellipse_arc(bcx, bcy, rx, ry, phase + 120, phase + 190, color, th);
+    gfx_draw_ellipse_arc(bcx, bcy, rx, ry, phase + 240, phase + 310, color, th);
     gfx_reset_target();
 }
 
@@ -500,36 +511,36 @@ static char kbd_poll(void) {
     return 0;
 }
 
-static void draw_char(int x, int y, char c, int s, u32 fg) {
-    int w = 8 * s;
-    int h = 16 * s;
+static void draw_char(int x, int y, char c, int sx, int sy, u32 fg) {
+    int w = 8 * sx;
+    int h = 16 * sy;
     for (int row = 0; row < h; row++) {
-        u8 bits = gfx_get_glyph((u8)c, row / s);
+        u8 bits = gfx_get_glyph((u8)c, row / sy);
         for (int col = 0; col < w; col++) {
-            if (bits & (0x80 >> (col / s)))
+            if (bits & (0x80 >> (col / sx)))
                 px(x + col, y + row, fg);
         }
     }
 }
 
-static void draw_string(int x, int y, const char *s, int sc, u32 fg) {
+static void draw_string(int x, int y, const char *s, int sx, int sy, u32 fg) {
     while (*s) {
-        draw_char(x, y, *s, sc, fg);
-        x += 8 * sc + sc;
+        draw_char(x, y, *s, sx, sy, fg);
+        x += 8 * sx + sx;
         s++;
     }
 }
 
-static int string_width(const char *s, int sc) {
+static int string_width(const char *s, int sx) {
     int n = 0;
     while (s[n]) n++;
     if (n == 0) return 0;
-    return n * (8 * sc + sc) - sc;
+    return n * (8 * sx + sx) - sx;
 }
 
-static void draw_string_center(int y, const char *s, int sc, u32 fg) {
-    int w = string_width(s, sc);
-    draw_string((int)scr_w / 2 - w / 2, y, s, sc, fg);
+static void draw_string_center(int y, const char *s, int sx, int sy, u32 fg) {
+    int w = string_width(s, sx);
+    draw_string((int)scr_w / 2 - w / 2, y, s, sx, sy, fg);
 }
 
 static void draw_border(int x, int y, int w, int h, int t, u32 c) {
@@ -615,15 +626,15 @@ static void cursor_erase(void) {
 static void cursor_draw(void) {
     const cursor_img_t *c = &cursor_imgs[cur_shape];
 
-    cur_w = (c->w * ui_k * c->scale) / 10000;
-    cur_h = (c->h * ui_k * c->scale) / 10000;
+    cur_w = (c->w * ui_kx * c->scale) / 10000;
+    cur_h = (c->h * ui_ky * c->scale) / 10000;
     if (cur_w < 1) cur_w = 1;
     if (cur_h < 1) cur_h = 1;
     if (cur_w > CUR_BUF_W) cur_w = CUR_BUF_W;
     if (cur_h > CUR_BUF_H) cur_h = CUR_BUF_H;
 
-    cur_px = mouse_x - (c->hotx * ui_k * c->scale) / 10000;
-    cur_py = mouse_y - (c->hoty * ui_k * c->scale) / 10000;
+    cur_px = mouse_x - (c->hotx * ui_kx * c->scale) / 10000;
+    cur_py = mouse_y - (c->hoty * ui_ky * c->scale) / 10000;
 
     for (int j = 0; j < cur_h; j++) {
         int sy = j * c->h / cur_h;
@@ -677,27 +688,32 @@ static int box_y = 360;
 
 static void draw_login_static(void) {
     int cx = (int)scr_w / 2;
-    int k = ui_k;
 
     draw_background();
 
-    int logo_size = 88 * k / 100;
-    if (logo_size < 32) logo_size = 32;
+    int logo_w = scx(88);
+    int logo_h = scy(88);
+    if (logo_w < 32) logo_w = 32;
+    if (logo_h < 32) logo_h = 32;
     int logo_cy = (int)scr_h * 34 / 100;
-    draw_logo(cx, logo_cy, logo_size);
+    draw_logo(cx, logo_cy, logo_w, logo_h);
 
-    int tpct = k * 48 / 100;
-    if (tpct < 16) tpct = 16;
-    while (tpct > 16 && text_width(tpct) > (int)scr_w - 40)
-        tpct--;
-    int text_y = logo_cy + logo_size / 2 + 22 * k / 100;
-    draw_text_at(text_y, tpct);
+    int tpx = ui_kx * 48 / 100;
+    if (tpx < 16) tpx = 16;
+    while (tpx > 16 && text_width(tpx) > (int)scr_w - 40)
+        tpx--;
+    int tpy = ui_ky * 48 / 100;
+    if (tpy < 16) tpy = 16;
+    int text_y = logo_cy + logo_h / 2 + scy(22);
+    draw_text_at(text_y, tpx, tpy);
 
-    int sc = k * 3 / 200;
+    int sc = ui_kx * 3 / 200;
     if (sc < 1) sc = 1;
+    int scy_f = ui_ky * 3 / 200;
+    if (scy_f < 1) scy_f = 1;
     u32 gray = pack(150, 158, 175);
-    draw_string_center(text_y + (ASC48_CELL * tpct / 100) + 26 * k / 100,
-                       "Enter your password", sc, gray);
+    draw_string_center(text_y + text_height(tpy) + scy(26),
+                       "Enter your password", sc, scy_f, gray);
 
     u32 box_bg   = pack(18, 24, 42);
     u32 box_line = pack(64, 84, 128);
@@ -706,44 +722,53 @@ static void draw_login_static(void) {
     fill_rect(box_x, box_y, box_w, box_h, box_bg);
     draw_border(box_x, box_y, box_w, box_h, 2, box_line);
 
-    int dot = 5 * k / 100;
-    if (dot < 3) dot = 3;
+    int dotx = scx(5);
+    int doty = scy(5);
+    if (dotx < 3) dotx = 3;
+    if (doty < 3) doty = 3;
     int dy = box_y + box_h / 2;
-    int dx = box_x + 14 * k / 100;
+    int dx = box_x + scx(14);
 
     for (int i = 0; i < pwd_len; i++) {
-        for (int j = -dot; j <= dot; j++)
-            for (int ii = -dot; ii <= dot; ii++)
-                if (j * j + ii * ii <= dot * dot)
-                    px(dx + j, dy + ii, white);
-        dx += dot * 4;
+        for (int j = -doty; j <= doty; j++)
+            for (int ii = -dotx; ii <= dotx; ii++)
+                if ((long)ii * ii * doty * doty + (long)j * j * dotx * dotx
+                    <= (long)dotx * dotx * doty * doty)
+                    px(dx + ii, dy + j, white);
+        dx += dotx * 4;
     }
 }
 
 static void draw_login_message(const char *msg, int bad) {
-    int sc = ui_k * 3 / 200;
+    int sc = ui_kx * 3 / 200;
     if (sc < 1) sc = 1;
+    int sy = ui_ky * 3 / 200;
+    if (sy < 1) sy = 1;
     u32 color = bad ? pack(230, 90, 90) : pack(120, 220, 150);
-    int h = 16 * sc;
-    int y = box_y + box_h + 18 * ui_k / 100;
+    int h = 16 * sy;
+    int y = box_y + box_h + scy(18);
     fill_bg_rect(0, y - 2, (int)scr_w, h + 4);
     int w = string_width(msg, sc);
-    draw_string((int)scr_w / 2 - w / 2, y, msg, sc, color);
+    draw_string((int)scr_w / 2 - w / 2, y, msg, sc, sy, color);
 }
 
 static void draw_welcome(void) {
     int cx = (int)scr_w / 2;
     draw_background();
 
-    int logo_size = 104 * ui_k / 100;
-    if (logo_size < 32) logo_size = 32;
-    int logo_cy = (int)scr_h / 2 - 60 * ui_k / 100;
-    draw_logo(cx, logo_cy, logo_size);
+    int logo_w = scx(104);
+    int logo_h = scy(104);
+    if (logo_w < 32) logo_w = 32;
+    if (logo_h < 32) logo_h = 32;
+    int logo_cy = (int)scr_h / 2 - scy(60);
+    draw_logo(cx, logo_cy, logo_w, logo_h);
 
-    int sc = ui_k * 4 / 200;
+    int sc = ui_kx * 4 / 200;
     if (sc < 1) sc = 1;
-    draw_string_center((int)scr_h / 2 + 40 * ui_k / 100,
-                       "Welcome to LunarOS", sc, pack(240, 240, 240));
+    int sy = ui_ky * 4 / 200;
+    if (sy < 1) sy = 1;
+    draw_string_center((int)scr_h / 2 + scy(40),
+                       "Welcome to LunarOS", sc, sy, pack(240, 240, 240));
 }
 
 static void run_boot_animation(void) {
@@ -751,56 +776,61 @@ static void run_boot_animation(void) {
 
     draw_background();
 
-    int logo_size = LOGO_H * ui_k / 100;
-    if (logo_size < 32) logo_size = 32;
+    int logo_w = scx(LOGO_H);
+    int logo_h = scy(LOGO_H);
+    if (logo_w < 32) logo_w = 32;
+    if (logo_h < 32) logo_h = 32;
 
-    int tpct = ui_k * TEXT_SCALE / 100;
+    int tpct = ui_kx * TEXT_SCALE / 100;
     if (tpct < 20) tpct = 20;
     while (tpct > 20 && text_width(tpct) > (int)scr_w - 40)
         tpct--;
 
-    int r  = (34 * ui_k * RING_SCALE + 5000) / 10000;
-    int th = (5 * ui_k * RING_SCALE + 5000) / 10000;
-    if (r < 8) r = 8;
+    int rx = (34 * ui_kx * RING_SCALE + 5000) / 10000;
+    int ry = (34 * ui_ky * RING_SCALE + 5000) / 10000;
+    int th = (5 * ui_ky * RING_SCALE + 5000) / 10000;
+    if (rx < 8) rx = 8;
+    if (ry < 8) ry = 8;
     if (th < 2) th = 2;
 
-    int gap1 = 30 * ui_k / 100;
-    int gap2 = 40 * ui_k / 100;
+    int gap1 = scy(30);
+    int gap2 = scy(40);
     if (gap1 < 8) gap1 = 8;
     if (gap2 < 10) gap2 = 10;
 
-    int text_h = (ASC48_CELL * tpct + 50) / 100;
-    if (text_h < 1) text_h = 1;
+    int text_h = text_height(ui_ky * TEXT_SCALE / 100);
 
-    int block_h = logo_size + gap1 + text_h + gap2 + (r + th) * 2;
+    int block_h = logo_h + gap1 + text_h + gap2 + (ry + th) * 2;
     int top = ((int)scr_h - block_h) / 2;
     if (top < 0) top = 0;
 
-    int logo_cy = top + logo_size / 2;
-    int text_y  = top + logo_size + gap1;
-    int cy      = text_y + text_h + gap2 + r + th;
+    int logo_cy = top + logo_h / 2;
+    int text_y  = top + logo_h + gap1;
+    int cy      = text_y + text_h + gap2 + ry + th;
 
-    draw_logo(cx, logo_cy, logo_size);
-    draw_text_at(text_y, tpct);
+    draw_logo(cx, logo_cy, logo_w, logo_h);
+    draw_text_at(text_y, tpct, ui_ky * TEXT_SCALE / 100);
     serial_puts("[KERNEL] boot screen ready\n");
 
     int phase = 0;
     u32 white = pack(255, 255, 255);
 
-    int box = (r + th + 3) * 2;
-    if (box > RING_BOX_MAX) box = RING_BOX_MAX;
-    int box_x = cx - box / 2;
-    int box_y = cy - box / 2;
+    int box_w = (rx + th + 3) * 2;
+    int box_h = (ry + th + 3) * 2;
+    if (box_w > RING_BOX_MAX) box_w = RING_BOX_MAX;
+    if (box_h > RING_BOX_MAX) box_h = RING_BOX_MAX;
+    int box_x = cx - box_w / 2;
+    int box_y = cy - box_h / 2;
     static u32 ring_buf[RING_BOX_MAX * RING_BOX_MAX];
-    int bcx = box / 2;
-    int bcy = box / 2;
+    int bcx = box_w / 2;
+    int bcy = box_h / 2;
 
     for (int f = 0; f < LOAD_FRAMES; f++) {
         mouse_poll();
         mouse_moved = 0;
 
-        draw_ring_box(ring_buf, box, bcx, bcy, box_y, r, th, phase, white);
-        gfx_blit_buffer(ring_buf, box, box_x, box_y, box, box);
+        draw_ring_box(ring_buf, box_w, box_h, bcx, bcy, box_y, rx, ry, th, phase, white);
+        gfx_blit_buffer(ring_buf, box_w, box_x, box_y, box_w, box_h);
         phase = (phase + ARC_STEP) % 360;
 
         delay_us(ARC_DELAY_US);
@@ -808,12 +838,13 @@ static void run_boot_animation(void) {
 }
 
 static void login_screen(void) {
-    int sc_msg = ui_k * 3 / 200;
-    if (sc_msg < 1) sc_msg = 1;
+    int sc_msg_x = ui_kx * 3 / 200;
+    int sc_msg_y = ui_ky * 3 / 200;
+    if (sc_msg_x < 1) sc_msg_x = 1;
+    if (sc_msg_y < 1) sc_msg_y = 1;
 
-    int k = ui_k;
-    box_w = 300 * k / 100;
-    box_h = 42 * k / 100;
+    box_w = scx(300);
+    box_h = scy(42);
     if (box_w < 160) box_w = 160;
     if (box_h < 24) box_h = 24;
     box_x = ((int)scr_w - box_w) / 2;
@@ -827,8 +858,8 @@ static void login_screen(void) {
     draw_login_static();
     cursor_redraw();
 
-    int msg_y = box_y + box_h + 18 * k / 100;
-    int msg_h = 16 * sc_msg + 4;
+    int msg_y = box_y + box_h + scy(18);
+    int msg_h = 16 * sc_msg_y + 4;
     fill_bg_rect(0, msg_y - 2, (int)scr_w, msg_h);
     cursor_redraw();
 
@@ -895,9 +926,12 @@ void kernel_main(u32 lfb, u32 width, u32 height, u32 bpp, u32 pitch) {
     scr_w = width;
     scr_h = height;
 
-    ui_k = (int)(scr_h * 100u / 600u);
-    if (ui_k < 60) ui_k = 60;
-    if (ui_k > UI_K_MAX) ui_k = UI_K_MAX;
+    ui_kx = (int)(scr_w * 100u / 800u);
+    ui_ky = (int)(scr_h * 100u / 600u);
+    if (ui_kx < 50) ui_kx = 50;
+    if (ui_ky < 50) ui_ky = 50;
+    if (ui_kx > UI_K_MAX) ui_kx = UI_K_MAX;
+    if (ui_ky > UI_K_MAX) ui_ky = UI_K_MAX;
 
     serial_puts("[KERNEL] gfx ready ");
     serial_putnum(scr_w);

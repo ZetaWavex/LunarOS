@@ -28,6 +28,8 @@ void gfx_clear(color_t c);
 void gfx_blit(int x, int y, int w, int h, rgba_t *data);
 void gfx_draw_arc(int cx, int cy, int r, int start_a, int end_a,
                   color_t c, int thickness);
+void gfx_draw_ellipse_arc(int cx, int cy, int rx, int ry, int start_a, int end_a,
+                          color_t c, int thickness);
 void gfx_gradient_vertical(int x, int y, int w, int h,
                            color_t c1, color_t c2);
 void gfx_putchar(int x, int y, char c, color_t fg, color_t bg);
