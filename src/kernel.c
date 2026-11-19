@@ -577,7 +577,7 @@ static const cursor_img_t cursor_imgs[2] = {
       CURSOR_BEAM_HOTX, CURSOR_BEAM_HOTY, 45 },
 };
 
-#define UI_K_MAX 200
+#define UI_K_MAX 400
 
 #define CUR_BUF_W (CURSOR_MAX_W * UI_K_MAX / 100 + 2)
 #define CUR_BUF_H (CURSOR_MAX_H * UI_K_MAX / 100 + 2)
