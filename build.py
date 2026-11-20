@@ -12,7 +12,7 @@ BUILD = os.path.join(ROOT, "build")
 NASM = r"d:\NewX\OS\Try 5\Program\NASM\nasm.exe"
 
 DEFAULT_PASSWORD = "1234"
-PWD_LBA = 128
+PWD_LBA = 256
 PWD_FILE = "password.txt"
 
 

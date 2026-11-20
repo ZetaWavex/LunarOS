@@ -10,7 +10,7 @@
 
 #define LOAD_FRAMES  190
 #define PWD_MAX       24
-#define PWD_LBA       128
+#define PWD_LBA       256
 
 static inline void outb(u16 port, u8 val) {
     __asm__ __volatile__("outb %0, %1" :: "a"(val), "Nd"(port));
@@ -573,9 +573,9 @@ typedef struct {
 
 static const cursor_img_t cursor_imgs[2] = {
     { cursor_arrow_rgba, CURSOR_ARROW_W, CURSOR_ARROW_H,
-      CURSOR_ARROW_HOTX, CURSOR_ARROW_HOTY, 100 },
+      CURSOR_ARROW_HOTX, CURSOR_ARROW_HOTY, 56 },
     { cursor_beam_rgba, CURSOR_BEAM_W, CURSOR_BEAM_H,
-      CURSOR_BEAM_HOTX, CURSOR_BEAM_HOTY, 45 },
+      CURSOR_BEAM_HOTX, CURSOR_BEAM_HOTY, 30 },
 };
 
 #define UI_K_MAX 400
