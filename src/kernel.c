@@ -777,8 +777,8 @@ static void run_boot_animation(void) {
 
     draw_background();
 
-    int logo_w = 100;
-    int logo_h = 100;
+    int logo_w = 200;
+    int logo_h = 200;
 
     int tpct = ui_k * TEXT_SCALE / 100;
     if (tpct < 20) tpct = 20;
