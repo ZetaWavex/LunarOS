@@ -594,7 +594,7 @@ typedef struct {
 
 static const cursor_img_t cursor_imgs[2] = {
     { cursor_arrow_rgba, CURSOR_ARROW_W, CURSOR_ARROW_H,
-      CURSOR_ARROW_HOTX, CURSOR_ARROW_HOTY, 72 },
+      CURSOR_ARROW_HOTX, CURSOR_ARROW_HOTY, 60 },
     { cursor_beam_rgba, CURSOR_BEAM_W, CURSOR_BEAM_H,
       CURSOR_BEAM_HOTX, CURSOR_BEAM_HOTY, 20 },
 };
