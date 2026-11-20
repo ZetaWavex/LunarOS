@@ -85,9 +85,10 @@ static u32 scr_w;
 static u32 scr_h;
 static int ui_kx = 100;
 static int ui_ky = 100;
+static int ui_k = 100;
 
-static int scx(int v) { return v * ui_kx / 100; }
-static int scy(int v) { return v * ui_ky / 100; }
+static int scx(int v) { return v * ui_k / 100; }
+static int scy(int v) { return v * ui_k / 100; }
 
 static u32 pack(u8 r, u8 g, u8 b) {
     if (fb_bpp == 32) return ((u32)r << 16) | ((u32)g << 8) | (u32)b;
@@ -626,15 +627,15 @@ static void cursor_erase(void) {
 static void cursor_draw(void) {
     const cursor_img_t *c = &cursor_imgs[cur_shape];
 
-    cur_w = (c->w * ui_kx * c->scale) / 10000;
-    cur_h = (c->h * ui_ky * c->scale) / 10000;
+    cur_w = (c->w * ui_k * c->scale) / 10000;
+    cur_h = (c->h * ui_k * c->scale) / 10000;
     if (cur_w < 1) cur_w = 1;
     if (cur_h < 1) cur_h = 1;
     if (cur_w > CUR_BUF_W) cur_w = CUR_BUF_W;
     if (cur_h > CUR_BUF_H) cur_h = CUR_BUF_H;
 
-    cur_px = mouse_x - (c->hotx * ui_kx * c->scale) / 10000;
-    cur_py = mouse_y - (c->hoty * ui_ky * c->scale) / 10000;
+    cur_px = mouse_x - (c->hotx * ui_k * c->scale) / 10000;
+    cur_py = mouse_y - (c->hoty * ui_k * c->scale) / 10000;
 
     for (int j = 0; j < cur_h; j++) {
         int sy = j * c->h / cur_h;
@@ -698,18 +699,18 @@ static void draw_login_static(void) {
     int logo_cy = (int)scr_h * 34 / 100;
     draw_logo(cx, logo_cy, logo_w, logo_h);
 
-    int tpx = ui_kx * 48 / 100;
+    int tpx = ui_k * 48 / 100;
     if (tpx < 16) tpx = 16;
     while (tpx > 16 && text_width(tpx) > (int)scr_w - 40)
         tpx--;
-    int tpy = ui_ky * 48 / 100;
+    int tpy = ui_k * 48 / 100;
     if (tpy < 16) tpy = 16;
     int text_y = logo_cy + logo_h / 2 + scy(22);
     draw_text_at(text_y, tpx, tpy);
 
-    int sc = ui_kx * 3 / 200;
+    int sc = ui_k * 3 / 200;
     if (sc < 1) sc = 1;
-    int scy_f = ui_ky * 3 / 200;
+    int scy_f = ui_k * 3 / 200;
     if (scy_f < 1) scy_f = 1;
     u32 gray = pack(150, 158, 175);
     draw_string_center(text_y + text_height(tpy) + scy(26),
@@ -740,9 +741,9 @@ static void draw_login_static(void) {
 }
 
 static void draw_login_message(const char *msg, int bad) {
-    int sc = ui_kx * 3 / 200;
+    int sc = ui_k * 3 / 200;
     if (sc < 1) sc = 1;
-    int sy = ui_ky * 3 / 200;
+    int sy = ui_k * 3 / 200;
     if (sy < 1) sy = 1;
     u32 color = bad ? pack(230, 90, 90) : pack(120, 220, 150);
     int h = 16 * sy;
@@ -763,9 +764,9 @@ static void draw_welcome(void) {
     int logo_cy = (int)scr_h / 2 - scy(60);
     draw_logo(cx, logo_cy, logo_w, logo_h);
 
-    int sc = ui_kx * 4 / 200;
+    int sc = ui_k * 4 / 200;
     if (sc < 1) sc = 1;
-    int sy = ui_ky * 4 / 200;
+    int sy = ui_k * 4 / 200;
     if (sy < 1) sy = 1;
     draw_string_center((int)scr_h / 2 + scy(40),
                        "Welcome to LunarOS", sc, sy, pack(240, 240, 240));
@@ -781,14 +782,14 @@ static void run_boot_animation(void) {
     if (logo_w < 32) logo_w = 32;
     if (logo_h < 32) logo_h = 32;
 
-    int tpct = ui_kx * TEXT_SCALE / 100;
+    int tpct = ui_k * TEXT_SCALE / 100;
     if (tpct < 20) tpct = 20;
     while (tpct > 20 && text_width(tpct) > (int)scr_w - 40)
         tpct--;
 
-    int rx = (34 * ui_kx * RING_SCALE + 5000) / 10000;
-    int ry = (34 * ui_ky * RING_SCALE + 5000) / 10000;
-    int th = (5 * ui_ky * RING_SCALE + 5000) / 10000;
+    int rx = (34 * ui_k * RING_SCALE + 5000) / 10000;
+    int ry = (34 * ui_k * RING_SCALE + 5000) / 10000;
+    int th = (5 * ui_k * RING_SCALE + 5000) / 10000;
     if (rx < 8) rx = 8;
     if (ry < 8) ry = 8;
     if (th < 2) th = 2;
@@ -798,7 +799,7 @@ static void run_boot_animation(void) {
     if (gap1 < 8) gap1 = 8;
     if (gap2 < 10) gap2 = 10;
 
-    int text_h = text_height(ui_ky * TEXT_SCALE / 100);
+    int text_h = text_height(ui_k * TEXT_SCALE / 100);
 
     int block_h = logo_h + gap1 + text_h + gap2 + (ry + th) * 2;
     int top = ((int)scr_h - block_h) / 2;
@@ -809,7 +810,7 @@ static void run_boot_animation(void) {
     int cy      = text_y + text_h + gap2 + ry + th;
 
     draw_logo(cx, logo_cy, logo_w, logo_h);
-    draw_text_at(text_y, tpct, ui_ky * TEXT_SCALE / 100);
+    draw_text_at(text_y, tpct, ui_k * TEXT_SCALE / 100);
     serial_puts("[KERNEL] boot screen ready\n");
 
     int phase = 0;
@@ -838,8 +839,8 @@ static void run_boot_animation(void) {
 }
 
 static void login_screen(void) {
-    int sc_msg_x = ui_kx * 3 / 200;
-    int sc_msg_y = ui_ky * 3 / 200;
+    int sc_msg_x = ui_k * 3 / 200;
+    int sc_msg_y = ui_k * 3 / 200;
     if (sc_msg_x < 1) sc_msg_x = 1;
     if (sc_msg_y < 1) sc_msg_y = 1;
 
@@ -932,6 +933,8 @@ void kernel_main(u32 lfb, u32 width, u32 height, u32 bpp, u32 pitch) {
     if (ui_ky < 50) ui_ky = 50;
     if (ui_kx > UI_K_MAX) ui_kx = UI_K_MAX;
     if (ui_ky > UI_K_MAX) ui_ky = UI_K_MAX;
+
+    ui_k = ui_kx < ui_ky ? ui_kx : ui_ky;
 
     serial_puts("[KERNEL] gfx ready ");
     serial_putnum(scr_w);
