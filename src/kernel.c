@@ -544,19 +544,40 @@ static void draw_string_center(int y, const char *s, int sx, int sy, u32 fg) {
     draw_string((int)scr_w / 2 - w / 2, y, s, sx, sy, fg);
 }
 
-static void draw_border(int x, int y, int w, int h, int t, u32 c) {
-    for (int j = 0; j < h; j++) {
-        for (int i = 0; i < w; i++) {
-            int edge = (i < t || i >= w - t || j < t || j >= h - t);
-            if (edge) px(x + i, y + j, c);
-        }
-    }
+static int in_round(int i, int j, int w, int h, int r) {
+    if (r < 1) return 1;
+    if (r * 2 > w) r = w / 2;
+    if (r * 2 > h) r = h / 2;
+    if (r < 1) return 1;
+    int a = 0, b = 0;
+    if (i < r) a = 2 * i + 1 - 2 * r;
+    else if (i >= w - r) a = 2 * (i - (w - r)) + 1;
+    if (j < r) b = 2 * j + 1 - 2 * r;
+    else if (j >= h - r) b = 2 * (j - (h - r)) + 1;
+    return a * a + b * b <= 4 * r * r;
 }
 
-static void fill_rect(int x, int y, int w, int h, u32 c) {
+static void fill_round_rect(int x, int y, int w, int h, int r, u32 c) {
     for (int j = 0; j < h; j++)
         for (int i = 0; i < w; i++)
+            if (in_round(i, j, w, h, r))
+                px(x + i, y + j, c);
+}
+
+static void draw_round_border(int x, int y, int w, int h, int t, int r, u32 c) {
+    if (t < 1) t = 1;
+    int iw = w - 2 * t;
+    int ih = h - 2 * t;
+    int ir = r - t;
+    if (ir < 0) ir = 0;
+    for (int j = 0; j < h; j++) {
+        for (int i = 0; i < w; i++) {
+            if (!in_round(i, j, w, h, r)) continue;
+            if (iw > 0 && ih > 0 &&
+                in_round(i - t, j - t, iw, ih, ir)) continue;
             px(x + i, y + j, c);
+        }
+    }
 }
 
 #include "cursor_data.h"
@@ -720,8 +741,12 @@ static void draw_login_static(void) {
     u32 box_line = pack(64, 84, 128);
     u32 white    = pack(240, 240, 240);
 
-    fill_rect(box_x, box_y, box_w, box_h, box_bg);
-    draw_border(box_x, box_y, box_w, box_h, 2, box_line);
+    int box_r = ui_k * 4 / 100;
+    if (box_r < 2) box_r = 2;
+    if (box_r > box_h / 2) box_r = box_h / 2;
+
+    fill_round_rect(box_x, box_y, box_w, box_h, box_r, box_bg);
+    draw_round_border(box_x, box_y, box_w, box_h, 2, box_r, box_line);
 
     int dotx = scx(5);
     int doty = scy(5);
