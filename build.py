@@ -88,28 +88,83 @@ def parse_cur(path, want_size):
     for i in range(count):
         e = struct.unpack("<BBBBHHII", data[6 + i * 16:22 + i * 16])
         w, h, _colors, _res, hot_x, hot_y, _nbytes, off = e
+        w = w or 256
+        h = h or 256
         if w != want_size:
             continue
 
         hdr = struct.unpack("<IiiHHIIiiII", data[off:off + 40])
         _sz, _w, dh, _planes, bpp, comp = hdr[0], hdr[1], hdr[2], hdr[3], hdr[4], hdr[5]
-        if bpp != 32 or comp != 0:
-            raise ValueError(f"{path}: unsupported bpp={bpp} compression={comp}")
+        if comp != 0:
+            raise ValueError(f"{path}: unsupported compression={comp}")
 
+        px_w = w
         px_h = dh // 2
         base = off + 40
-        out = bytearray(w * px_h * 4)
-        for y in range(px_h):
-            src_row = base + (px_h - 1 - y) * w * 4
-            for x in range(w):
-                si = src_row + x * 4
-                b, g, r, a = data[si], data[si + 1], data[si + 2], data[si + 3]
-                di = (y * w + x) * 4
-                out[di] = r
-                out[di + 1] = g
-                out[di + 2] = b
-                out[di + 3] = a
-        return w, px_h, hot_x, hot_y, bytes(out)
+        out = bytearray(px_w * px_h * 4)
+
+        if bpp == 32:
+            for y in range(px_h):
+                src_row = base + (px_h - 1 - y) * px_w * 4
+                for x in range(px_w):
+                    si = src_row + x * 4
+                    b, g, r, a = data[si], data[si + 1], data[si + 2], data[si + 3]
+                    di = (y * px_w + x) * 4
+                    out[di] = r
+                    out[di + 1] = g
+                    out[di + 2] = b
+                    out[di + 3] = a
+            return w, px_h, hot_x, hot_y, bytes(out)
+
+        if bpp == 24:
+            stride = ((px_w * 3 + 3) // 4) * 4
+            for y in range(px_h):
+                src_row = base + (px_h - 1 - y) * stride
+                for x in range(px_w):
+                    si = src_row + x * 3
+                    di = (y * px_w + x) * 4
+                    out[di] = data[si + 2]
+                    out[di + 1] = data[si + 1]
+                    out[di + 2] = data[si]
+                    out[di + 3] = 255
+            return w, px_h, hot_x, hot_y, bytes(out)
+
+        if bpp in (1, 4, 8):
+            colors = 1 << bpp
+            pal_off = base
+            pal = []
+            for c in range(colors):
+                b, g, r, _a = data[pal_off + c * 4: pal_off + c * 4 + 4]
+                pal.append((r, g, b))
+            stride = ((px_w * bpp + 31) // 32) * 4
+            xor_base = pal_off + colors * 4
+            and_base = xor_base + stride * px_h
+            and_stride = ((px_w + 31) // 32) * 4
+            for y in range(px_h):
+                src_row = xor_base + (px_h - 1 - y) * stride
+                arow = and_base + (px_h - 1 - y) * and_stride
+                for x in range(px_w):
+                    a_bit = (data[arow + (x >> 3)] >> (7 - (x & 7))) & 1
+                    di = (y * px_w + x) * 4
+                    if a_bit:
+                        out[di + 3] = 0
+                        continue
+                    if bpp == 8:
+                        idx = data[src_row + x]
+                    elif bpp == 4:
+                        byte = data[src_row + (x >> 1)]
+                        idx = (byte >> 4) if (x & 1) == 0 else (byte & 0x0F)
+                    else:
+                        byte = data[src_row + (x >> 3)]
+                        idx = (byte >> (7 - (x & 7))) & 1
+                    r, g, b = pal[idx]
+                    out[di] = r
+                    out[di + 1] = g
+                    out[di + 2] = b
+                    out[di + 3] = 255
+            return w, px_h, hot_x, hot_y, bytes(out)
+
+        raise ValueError(f"{path}: unsupported bpp={bpp}")
 
     raise ValueError(f"{path}: no {want_size}x{want_size} entry")
 
