@@ -594,9 +594,9 @@ typedef struct {
 
 static const cursor_img_t cursor_imgs[2] = {
     { cursor_arrow_rgba, CURSOR_ARROW_W, CURSOR_ARROW_H,
-      CURSOR_ARROW_HOTX, CURSOR_ARROW_HOTY, 56 },
+      CURSOR_ARROW_HOTX, CURSOR_ARROW_HOTY, 72 },
     { cursor_beam_rgba, CURSOR_BEAM_W, CURSOR_BEAM_H,
-      CURSOR_BEAM_HOTX, CURSOR_BEAM_HOTY, 30 },
+      CURSOR_BEAM_HOTX, CURSOR_BEAM_HOTY, 20 },
 };
 
 #define UI_K_MAX 400
@@ -741,8 +741,8 @@ static void draw_login_static(void) {
     u32 box_line = pack(64, 84, 128);
     u32 white    = pack(240, 240, 240);
 
-    int box_r = ui_k * 4 / 100;
-    if (box_r < 2) box_r = 2;
+    int box_r = ui_k * 10 / 100;
+    if (box_r < 4) box_r = 4;
     if (box_r > box_h / 2) box_r = box_h / 2;
 
     fill_round_rect(box_x, box_y, box_w, box_h, box_r, box_bg);
