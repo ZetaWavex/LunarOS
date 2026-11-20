@@ -69,6 +69,10 @@ def main():
             time.sleep(0.35)
         if keys:
             time.sleep(2.0)
+        if len(sys.argv) > 4:
+            mx, my = sys.argv[4].split(",")
+            s.sendall(("mouse_move %s %s\n" % (mx, my)).encode())
+            time.sleep(1.0)
         s.sendall(('screendump "%s"\n' % SHOT.replace("\\", "/")).encode())
         time.sleep(2.5)
         s.close()

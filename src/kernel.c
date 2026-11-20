@@ -852,8 +852,6 @@ static void login_screen(void) {
     pwd_len = 0;
     pwd_input[0] = 0;
 
-    cursor_set(CURSOR_BEAM);
-
     draw_login_static();
     cursor_redraw();
 
@@ -864,6 +862,11 @@ static void login_screen(void) {
 
     while (1) {
         mouse_poll();
+        if (mouse_x >= box_x && mouse_x < box_x + box_w &&
+            mouse_y >= box_y && mouse_y < box_y + box_h)
+            cursor_set(CURSOR_BEAM);
+        else
+            cursor_set(CURSOR_ARROW);
         cursor_update();
 
         char ch = kbd_poll();
