@@ -900,6 +900,7 @@ static void draw_login_message(const char *msg, int bad) {
 }
 
 #define BTN_NONE       -1
+#define BTN_DESKTOP     0
 #define BTN_SHUTDOWN    1
 #define BTN_RESTART     2
 #define BTN_KEYBOARD    3
@@ -1250,7 +1251,7 @@ static int desktop_hit(int mx, int my) {
     if (point_in(mx, my, btn_kb_x, btn_kb_y, btn_kb_w, btn_h))
         return BTN_KEYBOARD;
 
-    return BTN_NONE;
+    return BTN_DESKTOP;
 }
 
 static void machine_poweroff(void) {
@@ -1292,6 +1293,7 @@ static void desktop_screen(void) {
         mouse_poll();
 
         int hov = desktop_hit(mouse_x, mouse_y);
+        if (hov == BTN_DESKTOP) hov = BTN_NONE;
         if (hov != hover_btn) {
             hover_btn = hov;
             mouse_moved = 0;
@@ -1345,11 +1347,13 @@ static void desktop_screen(void) {
                 kbd_min = 0;
                 hover_btn = BTN_NONE;
                 desktop_repaint();
-            } else if (!win_visible) {
-                win_visible = 1;
-                win_min = 0;
-                hover_btn = BTN_NONE;
-                desktop_repaint();
+            } else if (id == BTN_DESKTOP) {
+                if (!win_visible) {
+                    win_visible = 1;
+                    win_min = 0;
+                    hover_btn = BTN_NONE;
+                    desktop_repaint();
+                }
             }
         }
 
