@@ -80,6 +80,12 @@ def main():
                     s.sendall(b"mouse_button 0\n")
                     time.sleep(1.5)
         s.sendall(('screendump "%s"\n' % SHOT.replace("\\", "/")).encode())
+        time.sleep(1.2)
+        shot2 = SHOT[:-4] + "_b.ppm"
+        s.sendall(('screendump "%s"\n' % shot2.replace("\\", "/")).encode())
+        time.sleep(1.2)
+        shot3 = SHOT[:-4] + "_c.ppm"
+        s.sendall(('screendump "%s"\n' % shot3.replace("\\", "/")).encode())
         time.sleep(2.5)
         s.close()
     except Exception as e:
