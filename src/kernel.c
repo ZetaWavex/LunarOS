@@ -649,11 +649,13 @@ static void draw_round_border(int x, int y, int w, int h, int t, int r, u32 c) {
         if (iw > 0 && ih > 0 && j >= t && j < h - t) {
             int ix, iwv;
             if (round_span(j - t, iw, ih, ir, &ix, &iwv)) {
-                int left = t + ix;
-                int right = w - t - ix - iwv;
-                if (left > 0) hspan(x + ox, y + j, left, c);
-                if (right > 0) hspan(x + w - right, y + j, right, c);
-                continue;
+                int left = t + ix - ox;
+                int right = ox + ow - t - ix - iwv;
+                if (left > 0 && right > 0) {
+                    hspan(x + ox, y + j, left, c);
+                    hspan(x + ox + ow - right, y + j, right, c);
+                    continue;
+                }
             }
         }
         hspan(x + ox, y + j, ow, c);
