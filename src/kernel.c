@@ -460,6 +460,7 @@ static int  mouse_x = 0;
 static int  mouse_y = 0;
 static int  mouse_moved = 0;
 static int  mouse_buttons = 0;
+static int  mouse_press = 0;
 
 static void mouse_poll(void) {
     u32 guard = 64;
@@ -489,7 +490,10 @@ static void mouse_poll(void) {
         }
 
         int btns = mouse_buf[0] & 0x07;
-        if ((btns & 0x01) && !(mouse_buttons & 0x01)) mouse_moved = 1;
+        if ((btns & 0x01) && !(mouse_buttons & 0x01)) {
+            mouse_moved = 1;
+            mouse_press = 1;
+        }
         mouse_buttons = btns;
     }
 }
@@ -708,6 +712,68 @@ static int box_h = 40;
 static int box_x = 240;
 static int box_y = 360;
 
+static int login_focus = 1;
+static int caret_on = 1;
+static int caret_tick = 0;
+
+static void dot_layout(int n, int *pr, int *pstep) {
+    int r = scx(5);
+    if (r < 3) r = 3;
+    int avail = box_w - scx(28);
+    int step = r * 4;
+    if (n > 1) {
+        if ((long)step * (n - 1) + 2 * r > avail) {
+            step = r * 2;
+            if ((long)step * (n - 1) + 2 * r > avail) {
+                r = avail / (2 * n);
+                if (r < 2) r = 2;
+                step = r * 2;
+            }
+        }
+    }
+    *pr = r;
+    *pstep = step;
+}
+
+static void draw_login_box(void) {
+    u32 box_bg   = pack(18, 24, 42);
+    u32 box_line = pack(64, 84, 128);
+    u32 white    = pack(240, 240, 240);
+
+    int box_r = ui_k * 10 / 100;
+    if (box_r < 4) box_r = 4;
+    if (box_r > box_h / 2) box_r = box_h / 2;
+
+    fill_round_rect(box_x, box_y, box_w, box_h, box_r, box_bg);
+    draw_round_border(box_x, box_y, box_w, box_h, 2, box_r, box_line);
+
+    int dy = box_y + box_h / 2;
+    int dx = box_x + scx(14);
+
+    int r, step;
+    dot_layout(pwd_len, &r, &step);
+
+    for (int i = 0; i < pwd_len; i++) {
+        for (int j = -r; j <= r; j++)
+            for (int ii = -r; ii <= r; ii++)
+                if ((long)ii * ii + (long)j * j <= (long)r * r)
+                    px(dx + ii, dy + j, white);
+        dx += step;
+    }
+
+    if (login_focus && caret_on) {
+        int ch = scy(18);
+        int cw = scx(2);
+        if (cw < 1) cw = 1;
+        if (cw > 3) cw = 3;
+        if (pwd_len == 0)
+            dx = box_x + scx(14);
+        for (int j = -ch / 2; j <= ch / 2; j++)
+            for (int i = 0; i < cw; i++)
+                px(dx + i, dy + j, white);
+    }
+}
+
 static void draw_login_static(void) {
     int cx = (int)scr_w / 2;
 
@@ -737,39 +803,7 @@ static void draw_login_static(void) {
     draw_string_center(text_y + text_height(tpy) + scy(26),
                        "Enter your password", sc, scy_f, gray);
 
-    u32 box_bg   = pack(18, 24, 42);
-    u32 box_line = pack(64, 84, 128);
-    u32 white    = pack(240, 240, 240);
-
-    int box_r = ui_k * 10 / 100;
-    if (box_r < 4) box_r = 4;
-    if (box_r > box_h / 2) box_r = box_h / 2;
-
-    fill_round_rect(box_x, box_y, box_w, box_h, box_r, box_bg);
-    draw_round_border(box_x, box_y, box_w, box_h, 2, box_r, box_line);
-
-    int dotx = scx(5);
-    int doty = scy(5);
-    if (dotx < 3) dotx = 3;
-    if (doty < 3) doty = 3;
-    int dy = box_y + box_h / 2;
-    int dx = box_x + scx(14);
-
-    int step = dotx * 4;
-    int avail = box_w - scx(28);
-    if (pwd_len > 1 && step * (pwd_len - 1) + dotx * 2 > avail) {
-        step = (avail - dotx * 2) / (pwd_len - 1);
-        if (step < dotx * 2) step = dotx * 2;
-    }
-
-    for (int i = 0; i < pwd_len; i++) {
-        for (int j = -doty; j <= doty; j++)
-            for (int ii = -dotx; ii <= dotx; ii++)
-                if ((long)ii * ii * doty * doty + (long)j * j * dotx * dotx
-                    <= (long)dotx * dotx * doty * doty)
-                    px(dx + ii, dy + j, white);
-        dx += step;
-    }
+    draw_login_box();
 }
 
 static void draw_login_message(const char *msg, int bad) {
@@ -894,15 +928,41 @@ static void login_screen(void) {
 
     while (1) {
         mouse_poll();
-        if (mouse_x >= box_x && mouse_x < box_x + box_w &&
-            mouse_y >= box_y && mouse_y < box_y + box_h)
-            cursor_set(CURSOR_BEAM);
-        else
-            cursor_set(CURSOR_ARROW);
+        int in_box = (mouse_x >= box_x && mouse_x < box_x + box_w &&
+                      mouse_y >= box_y && mouse_y < box_y + box_h);
+
+        if (mouse_press) {
+            mouse_press = 0;
+            if (in_box && !login_focus) {
+                login_focus = 1;
+                caret_tick = 0;
+                caret_on = 1;
+                cursor_erase();
+                draw_login_static();
+                cursor_redraw();
+            }
+        }
+
+        cursor_set(in_box ? CURSOR_BEAM : CURSOR_ARROW);
         cursor_update();
+
+        caret_tick++;
+        if (caret_tick >= 500) {
+            caret_tick = 0;
+            caret_on = !caret_on;
+            if (login_focus) {
+                cursor_erase();
+                draw_login_box();
+                cursor_redraw();
+            }
+        }
 
         char ch = kbd_poll();
         if (!ch) continue;
+        if (!login_focus) continue;
+
+        caret_tick = 0;
+        caret_on = 1;
 
         if (ch == '\n') {
             if (pwd_len == 0) continue;
