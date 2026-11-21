@@ -249,6 +249,184 @@ def make_cursor_header():
           f"(arrow {aw}x{ah} hot {ahx},{ahy}; beam {bw}x{bh} hot {bhx},{bhy})")
     return path
 
+ISO_BLOCK = 2048
+FLOPPY_144 = 1474560
+
+ISO_PVD_LBA = 16
+ISO_BOOTREC_LBA = 17
+ISO_TERM_LBA = 18
+ISO_CATALOG_LBA = 19
+ISO_PATHL_LBA = 20
+ISO_PATHM_LBA = 21
+ISO_ROOT_LBA = 22
+ISO_IMAGE_LBA = 23
+
+
+def _iso_time7():
+    now = time.gmtime()
+    return bytes([now.tm_year - 1900, now.tm_mon, now.tm_mday,
+                  now.tm_hour, now.tm_min, now.tm_sec, 0])
+
+
+def _both16(v):
+    return struct.pack("<H", v) + struct.pack(">H", v)
+
+
+def _both32(v):
+    return struct.pack("<I", v) + struct.pack(">I", v)
+
+
+def _iso_dir_record(extent, size, name, flags, when):
+    body = bytearray()
+    body += _both32(extent)
+    body += _both32(size)
+    body += when
+    body.append(flags)
+    body.append(0)
+    body.append(0)
+    body += _both16(1)
+    body.append(len(name))
+    body += name
+    total = 2 + len(body)
+    if total % 2:
+        body.append(0)
+        total += 1
+    return bytes(bytearray([total, 0]) + body)
+
+
+def _iso_pvd(volume_blocks, root_rec, path_size, when):
+    pvd = bytearray(ISO_BLOCK)
+    pvd[0] = 1
+    pvd[1:6] = b"CD001"
+    pvd[6] = 1
+    pvd[40:72] = b"LUNAROS" + b"\x00" * (32 - 7)
+    pvd[80:88] = _both32(volume_blocks)
+    pvd[120:124] = _both16(1)
+    pvd[124:128] = _both16(1)
+    pvd[128:132] = _both16(ISO_BLOCK)
+    pvd[132:140] = _both32(path_size)
+    pvd[140:144] = struct.pack("<I", ISO_PATHL_LBA)
+    pvd[144:148] = struct.pack("<I", 0)
+    pvd[148:152] = struct.pack(">I", ISO_PATHM_LBA)
+    pvd[152:156] = struct.pack(">I", 0)
+    pvd[156:190] = root_rec
+    pvd[190:318] = b"LUNAROS" + b"\x00" * (128 - 7)
+    pvd[318:446] = b"\x00" * 128
+    pvd[446:574] = b"\x00" * 128
+    pvd[574:702] = b"\x00" * 128
+    pvd[702:739] = b"\x00" * 37
+    pvd[739:776] = b"\x00" * 37
+    pvd[776:813] = b"\x00" * 37
+    d17 = b"2026010100000000\x00"
+    pvd[813:830] = d17
+    pvd[830:847] = d17
+    pvd[847:864] = b"\x00" * 17
+    pvd[864:881] = b"\x00" * 17
+    pvd[881] = 1
+    return bytes(pvd)
+
+
+def _iso_boot_record():
+    br = bytearray(ISO_BLOCK)
+    br[0] = 0
+    br[1:6] = b"CD001"
+    br[6] = 1
+    ident = b"EL TORITO SPECIFICATION"
+    br[7:39] = ident + b"\x00" * (32 - len(ident))
+    br[71:75] = struct.pack("<I", ISO_CATALOG_LBA)
+    return bytes(br)
+
+
+def _iso_terminator():
+    term = bytearray(ISO_BLOCK)
+    term[0] = 255
+    term[1:6] = b"CD001"
+    term[6] = 1
+    return bytes(term)
+
+
+def _iso_boot_catalog(image_lba):
+    cat = bytearray(ISO_BLOCK)
+    cat[0] = 1
+    cat[1] = 0
+    cat[8] = 0x55
+    cat[9] = 0xAA
+    words = 0
+    for i in range(0, 32, 2):
+        words += cat[i] | (cat[i + 1] << 8)
+    cat[6:8] = struct.pack("<H", (-words) & 0xFFFF)
+
+    e = 32
+    cat[e] = 0x88
+    cat[e + 1] = 2
+    cat[e + 2:e + 4] = struct.pack("<H", 0)
+    cat[e + 4] = 0
+    cat[e + 5] = 0
+    cat[e + 6:e + 8] = struct.pack("<H", 1)
+    cat[e + 8:e + 12] = struct.pack("<I", image_lba)
+    return bytes(cat)
+
+
+def _iso_path_table(lba, big):
+    rec = bytearray()
+    rec.append(1)
+    rec.append(0)
+    rec += struct.pack(">I" if big else "<I", lba)
+    rec += struct.pack(">H" if big else "<H", 1)
+    rec.append(0)
+    if len(rec) % 2:
+        rec.append(0)
+    return bytes(rec)
+
+
+def make_iso(img_path, iso_path):
+    with open(img_path, "rb") as f:
+        raw = f.read()
+    if len(raw) > FLOPPY_144:
+        print(f"[ERROR] image {len(raw)} B exceeds 1.44MB floppy ({FLOPPY_144} B)")
+        sys.exit(1)
+    boot_img = raw + b"\x00" * (FLOPPY_144 - len(raw))
+
+    when = _iso_time7()
+    image_blocks = FLOPPY_144 // ISO_BLOCK
+    volume_blocks = ISO_IMAGE_LBA + image_blocks
+
+    root_rec = _iso_dir_record(ISO_ROOT_LBA, ISO_BLOCK, b"\x00", 2, when)
+    path_l = _iso_path_table(ISO_ROOT_LBA, False)
+    path_m = _iso_path_table(ISO_ROOT_LBA, True)
+    path_size = len(path_l)
+
+    root_dir = bytearray()
+    root_dir += _iso_dir_record(ISO_ROOT_LBA, ISO_BLOCK, b"\x00", 2, when)
+    root_dir += _iso_dir_record(ISO_ROOT_LBA, ISO_BLOCK, b"\x01", 2, when)
+    if len(root_dir) > ISO_BLOCK:
+        print("[ERROR] root directory exceeds one block")
+        sys.exit(1)
+    root_dir += b"\x00" * (ISO_BLOCK - len(root_dir))
+
+    sectors = []
+    sectors += [b"\x00" * ISO_BLOCK] * ISO_PVD_LBA
+    sectors.append(_iso_pvd(volume_blocks, root_rec, path_size, when))
+    sectors.append(_iso_boot_record())
+    sectors.append(_iso_terminator())
+    sectors.append(_iso_boot_catalog(ISO_IMAGE_LBA))
+    sectors.append(path_l + b"\x00" * (ISO_BLOCK - len(path_l)))
+    sectors.append(path_m + b"\x00" * (ISO_BLOCK - len(path_m)))
+    sectors.append(bytes(root_dir))
+    for i in range(0, len(boot_img), ISO_BLOCK):
+        sectors.append(boot_img[i:i + ISO_BLOCK])
+
+    with open(iso_path, "wb") as f:
+        for s in sectors:
+            f.write(s)
+
+    total = os.path.getsize(iso_path)
+    print(f"[ISO] {os.path.basename(iso_path)}: {total} bytes "
+          f"({len(sectors)} blocks)")
+    print(f"  El Torito: 1.44MB floppy emulation, boot image at block {ISO_IMAGE_LBA}")
+    return iso_path
+
+
 def build():
     clean()
 
@@ -345,6 +523,10 @@ def build():
     print(f"  {PWD_FILE}: {os.path.getsize(pwd_path):>6} B  (LBA {PWD_LBA})")
     if total % 512 == 0:
         print(f"  image aligned to 512-byte sectors: OK")
+
+    print()
+    make_iso(os.path.join(BUILD, "os-image.img"),
+             os.path.join(BUILD, "LunarOS.iso"))
 
 if __name__ == "__main__":
     build()
