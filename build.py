@@ -4,6 +4,7 @@ import struct
 import subprocess
 import sys
 import shutil
+import time
 
 ROOT = os.path.dirname(os.path.abspath(__file__))
 SRC = os.path.join(ROOT, "src")
