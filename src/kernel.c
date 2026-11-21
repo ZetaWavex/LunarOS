@@ -28,6 +28,10 @@ static inline u16 inw(u16 port) {
     return r;
 }
 
+static inline void outw(u16 port, u16 val) {
+    __asm__ __volatile__("outw %0, %1" :: "a"(val), "Nd"(port));
+}
+
 static void serial_putc(char c) {
     while (!(inb(0x3FD) & 0x20)) { }
     outb(0x3F8, (u8)c);
