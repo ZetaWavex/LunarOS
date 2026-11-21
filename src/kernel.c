@@ -748,7 +748,7 @@ static void draw_login_box(void) {
     draw_round_border(box_x, box_y, box_w, box_h, 2, box_r, box_line);
 
     int dy = box_y + box_h / 2;
-    int dx = box_x + scx(14);
+    int dx = box_x + scx(8);
 
     int r, step;
     dot_layout(pwd_len, &r, &step);
@@ -767,7 +767,7 @@ static void draw_login_box(void) {
         if (cw < 1) cw = 1;
         if (cw > 3) cw = 3;
         if (pwd_len == 0)
-            dx = box_x + scx(14);
+            dx = box_x + scx(8);
         for (int j = -ch / 2; j <= ch / 2; j++)
             for (int i = 0; i < cw; i++)
                 px(dx + i, dy + j, white);
