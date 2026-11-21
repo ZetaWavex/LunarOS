@@ -94,6 +94,9 @@ static int ui_k = 100;
 static int scx(int v) { return v * ui_k / 100; }
 static int scy(int v) { return v * ui_k / 100; }
 
+static int ui_font_sx(void);
+static int ui_border_t(void);
+
 static u32 pack(u8 r, u8 g, u8 b) {
     if (fb_bpp == 32) return ((u32)r << 16) | ((u32)g << 8) | (u32)b;
     if (fb_bpp == 24) return ((u32)r << 16) | ((u32)g << 8) | (u32)b;
@@ -821,6 +824,180 @@ static void dot_layout(int n, int *pr, int *pstep) {
     *pstep = step;
 }
 
+#define BTN_LOGIN_POWER 10
+#define BTN_LOGIN_KBD   11
+
+static int lbtn_pw_x, lbtn_pw_y, lbtn_kb_x, lbtn_kb_y, lbtn_size = 40;
+
+static int lkb_visible = 0;
+static int lkb_x, lkb_y, lkb_w, lkb_h;
+static int lkb_key[12][4];
+static int lkb_nkey = 0;
+
+static int login_hover_btn = -1;
+static int login_hover_key = -1;
+
+static void login_layout(void) {
+    int m = scx(18);
+    if (m < 8) m = 8;
+    int gap = scx(8);
+    if (gap < 4) gap = 4;
+    int size = scy(36);
+    if (size < 26) size = 26;
+    lbtn_size = size;
+
+    lbtn_pw_y = (int)scr_h - m - size;
+    lbtn_pw_x = (int)scr_w - m - size;
+    lbtn_kb_y = lbtn_pw_y;
+    lbtn_kb_x = lbtn_pw_x - gap - size;
+}
+
+static void draw_power_icon(int cx, int cy, int r, u32 c) {
+    if (r < 4) r = 4;
+    int th = r / 3;
+    if (th < 2) th = 2;
+    int ri = r - th;
+    if (ri < 1) ri = 1;
+    int gap = r * 2 / 5;
+    if (gap < th) gap = th;
+
+    for (int j = -r; j <= r; j++) {
+        for (int i = -r; i <= r; i++) {
+            int d2 = i * i + j * j;
+            if (d2 > r * r || d2 < ri * ri) continue;
+            if (j < 0 && i >= -gap && i <= gap) continue;
+            px(cx + i, cy + j, c);
+        }
+    }
+
+    int sw = th;
+    int top = cy - r - r * 3 / 5;
+    int bot = cy - r / 4;
+    for (int j = top; j <= bot; j++)
+        for (int i = 0; i < sw; i++)
+            px(cx - sw / 2 + i, j, c);
+}
+
+static void draw_kbd_icon(int cx, int cy, int w, u32 c) {
+    int h = w * 2 / 3;
+    if (h < 8) h = 8;
+    int t = w / 12;
+    if (t < 1) t = 1;
+    int x = cx - w / 2;
+    int y = cy - h / 2;
+    int rr = h / 4;
+    if (rr < 2) rr = 2;
+    draw_round_border(x, y, w, h, t, rr, c);
+
+    int iw = w - 2 * t;
+    int ih = h - 2 * t;
+    if (iw < 4 || ih < 4) return;
+    int dot = w / 16;
+    if (dot < 1) dot = 1;
+    int cols = 4;
+    int rows = 3;
+    int x0 = x + t + iw / 10;
+    int x1 = x + t + iw - iw / 10 - dot;
+    int y0 = y + t + ih / 5;
+    int y1 = y + t + ih - ih / 5 - dot;
+    if (x1 < x0 || y1 < y0) return;
+
+    for (int r = 0; r < rows; r++) {
+        int cyk = y0 + (rows > 1 ? (y1 - y0) * r / (rows - 1) : 0);
+        for (int cc = 0; cc < cols; cc++) {
+            int cxk = x0 + (cols > 1 ? (x1 - x0) * cc / (cols - 1) : 0);
+            for (int j = 0; j < dot; j++)
+                for (int i = 0; i < dot; i++)
+                    px(cxk + i, cyk + j, c);
+        }
+    }
+}
+
+static void draw_icon_button(int x, int y, int s, int id, int icon) {
+    int r = s / 3;
+    if (r < 4) r = 4;
+    int hot = (login_hover_btn == id);
+    u32 fill = hot ? pack(66, 82, 122) : pack(28, 34, 54);
+    u32 line = hot ? pack(152, 178, 228) : pack(88, 104, 146);
+    u32 fg   = pack(226, 232, 244);
+
+    fill_round_rect(x, y, s, s, r, fill);
+    draw_round_border(x, y, s, s, 2, r, line);
+
+    if (icon == 0)
+        draw_power_icon(x + s / 2, y + s / 2, s * 11 / 40, fg);
+    else
+        draw_kbd_icon(x + s / 2, y + s / 2, s * 3 / 5, fg);
+}
+
+static void draw_login_corner(void) {
+    draw_icon_button(lbtn_kb_x, lbtn_kb_y, lbtn_size, BTN_LOGIN_KBD, 1);
+    draw_icon_button(lbtn_pw_x, lbtn_pw_y, lbtn_size, BTN_LOGIN_POWER, 0);
+}
+
+static void draw_login_kbd(void) {
+    int fs = ui_font_sx();
+    int pad = scx(10);
+    if (pad < 6) pad = 6;
+    int gap = scx(6);
+    if (gap < 3) gap = 3;
+    int kw = scx(46);
+    if (kw < 30) kw = 30;
+    int kh = scy(28);
+    if (kh < 20) kh = 20;
+
+    int cols = 3, rows = 4;
+    int w = pad * 2 + kw * cols + gap * (cols - 1);
+    int h = pad * 2 + kh * rows + gap * (rows - 1);
+    int x = ((int)scr_w - w) / 2;
+
+    int msg_sc = ui_k * 3 / 200;
+    if (msg_sc < 1) msg_sc = 1;
+    int y = box_y + box_h + scy(18) + 16 * msg_sc + scy(12);
+    if (y + h > (int)scr_h - scy(10))
+        y = (int)scr_h - scy(10) - h;
+    if (y < box_y + box_h + scy(4))
+        y = box_y + box_h + scy(4);
+
+    lkb_x = x;
+    lkb_y = y;
+    lkb_w = w;
+    lkb_h = h;
+
+    int r = scy(12);
+    if (r < 6) r = 6;
+    fill_round_rect(x, y, w, h, r, pack(22, 28, 46));
+    draw_round_border(x, y, w, h, 2, r, pack(96, 112, 156));
+
+    while (fs > 1 && 16 * fs > kh - scy(6)) fs--;
+
+    static const char *lbl[12] = {"1", "2", "3", "4", "5", "6",
+                                  "7", "8", "9", "DEL", "0", "OK"};
+    lkb_nkey = 12;
+    for (int i = 0; i < 12; i++) {
+        int rr = i / cols;
+        int cc = i % cols;
+        int kx = x + pad + cc * (kw + gap);
+        int ky = y + pad + rr * (kh + gap);
+        lkb_key[i][0] = kx;
+        lkb_key[i][1] = ky;
+        lkb_key[i][2] = kw;
+        lkb_key[i][3] = kh;
+
+        int kr = scy(6);
+        if (kr < 3) kr = 3;
+        if (kr > kh / 2) kr = kh / 2;
+        int hot = (login_hover_key == i);
+        fill_round_rect(kx, ky, kw, kh, kr, hot ? pack(70, 86, 126) : pack(42, 50, 74));
+        draw_round_border(kx, ky, kw, kh, 2, kr,
+                          hot ? pack(158, 184, 232) : pack(100, 116, 160));
+
+        int tw = string_width(lbl[i], fs);
+        draw_string(kx + (kw - tw) / 2, ky + (kh - 16 * fs) / 2,
+                    lbl[i], fs, fs, pack(232, 238, 248));
+    }
+}
+
 static void draw_login_box(void) {
     u32 box_bg   = pack(18, 24, 42);
     u32 box_line = pack(64, 84, 128);
@@ -859,6 +1036,8 @@ static void draw_login_box(void) {
 static void draw_login_static(void) {
     int cx = (int)scr_w / 2;
 
+    login_layout();
+
     draw_background();
 
     int logo_w = scx(88);
@@ -886,6 +1065,9 @@ static void draw_login_static(void) {
                        "Enter your password", sc, scy_f, gray);
 
     draw_login_box();
+    draw_login_corner();
+    if (lkb_visible)
+        draw_login_kbd();
 }
 
 static void draw_login_message(const char *msg, int bad) {
@@ -1461,8 +1643,74 @@ static void login_screen(void) {
         int in_box = (mouse_x >= box_x && mouse_x < box_x + box_w &&
                       mouse_y >= box_y && mouse_y < box_y + box_h);
 
+        int hb = -1;
+        if (mouse_x >= lbtn_pw_x && mouse_x < lbtn_pw_x + lbtn_size &&
+            mouse_y >= lbtn_pw_y && mouse_y < lbtn_pw_y + lbtn_size)
+            hb = BTN_LOGIN_POWER;
+        else if (mouse_x >= lbtn_kb_x && mouse_x < lbtn_kb_x + lbtn_size &&
+                 mouse_y >= lbtn_kb_y && mouse_y < lbtn_kb_y + lbtn_size)
+            hb = BTN_LOGIN_KBD;
+
+        int hk = -1;
+        if (lkb_visible) {
+            for (int i = 0; i < lkb_nkey; i++) {
+                if (mouse_x >= lkb_key[i][0] && mouse_x < lkb_key[i][0] + lkb_key[i][2] &&
+                    mouse_y >= lkb_key[i][1] && mouse_y < lkb_key[i][1] + lkb_key[i][3]) {
+                    hk = i;
+                    break;
+                }
+            }
+        }
+
+        if (hb != login_hover_btn || hk != login_hover_key) {
+            login_hover_btn = hb;
+            login_hover_key = hk;
+            cursor_erase();
+            draw_login_static();
+            cursor_redraw();
+        }
+
         if (mouse_press) {
             mouse_press = 0;
+
+            if (hb == BTN_LOGIN_POWER) {
+                serial_puts("[LOGIN] power off\n");
+                machine_poweroff();
+            }
+            if (hb == BTN_LOGIN_KBD) {
+                lkb_visible = !lkb_visible;
+                login_hover_key = -1;
+                cursor_erase();
+                draw_login_static();
+                cursor_redraw();
+                continue;
+            }
+
+            if (hk >= 0) {
+                login_focus = 1;
+                caret_tick = 0;
+                caret_on = 1;
+                if (hk == 9) {
+                    if (pwd_len > 0) {
+                        pwd_len--;
+                        pwd_input[pwd_len] = 0;
+                    }
+                } else if (hk == 11) {
+                    goto try_login;
+                } else {
+                    static const char kd[12] = {'1','2','3','4','5','6',
+                                                '7','8','9',0,'0',0};
+                    if (pwd_len < PWD_MAX) {
+                        pwd_input[pwd_len++] = kd[hk];
+                        pwd_input[pwd_len] = 0;
+                    }
+                }
+                cursor_erase();
+                draw_login_box();
+                cursor_redraw();
+                continue;
+            }
+
             int want = in_box ? 1 : 0;
             if (want != login_focus || (want && !caret_on)) {
                 login_focus = want;
@@ -1474,7 +1722,12 @@ static void login_screen(void) {
             }
         }
 
-        cursor_set(in_box ? CURSOR_BEAM : CURSOR_ARROW);
+        if (hb == BTN_LOGIN_POWER)
+            cursor_set(CURSOR_ARROW);
+        else if (hk >= 0 || hb == BTN_LOGIN_KBD)
+            cursor_set(CURSOR_ARROW);
+        else
+            cursor_set(in_box ? CURSOR_BEAM : CURSOR_ARROW);
         cursor_update();
 
         caret_tick++;
@@ -1490,27 +1743,14 @@ static void login_screen(void) {
 
         char ch = kbd_poll();
         if (!ch) continue;
+
+        if (ch == '\n')
+            goto try_login;
+
         if (!login_focus) continue;
 
         caret_tick = 0;
         caret_on = 1;
-
-        if (ch == '\n') {
-            if (pwd_len == 0) continue;
-            pwd_input[pwd_len] = 0;
-            if (password_match(pwd_input)) {
-                serial_puts("[LOGIN] success\n");
-                return;
-            }
-            serial_puts("[LOGIN] failed\n");
-            pwd_len = 0;
-            pwd_input[0] = 0;
-            cursor_erase();
-            draw_login_static();
-            draw_login_message("Wrong password, try again", 1);
-            cursor_redraw();
-            continue;
-        }
 
         if (ch == '\b') {
             if (pwd_len > 0) {
@@ -1531,6 +1771,22 @@ static void login_screen(void) {
             draw_login_box();
             cursor_redraw();
         }
+        continue;
+
+try_login:
+        if (pwd_len == 0) continue;
+        pwd_input[pwd_len] = 0;
+        if (password_match(pwd_input)) {
+            serial_puts("[LOGIN] success\n");
+            return;
+        }
+        serial_puts("[LOGIN] failed\n");
+        pwd_len = 0;
+        pwd_input[0] = 0;
+        cursor_erase();
+        draw_login_static();
+        draw_login_message("Wrong password, try again", 1);
+        cursor_redraw();
     }
 }
 
