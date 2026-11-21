@@ -498,15 +498,34 @@ static void mouse_poll(void) {
     }
 }
 
+static int kbd_e0 = 0;
+
 static char kbd_poll(void) {
     if (!(kbd_status() & 0x01)) return 0;
     if (kbd_status() & 0x20) return 0;
     u8 sc = inb(0x60);
+
+    if (sc == 0xE0) { kbd_e0 = 1; return 0; }
+    if (sc == 0xE1) { kbd_e0 = 2; return 0; }
+
+    int ext = kbd_e0;
+    kbd_e0 = 0;
+
     if (sc & 0x80) return 0;
-    if (sc >= 0x02 && sc <= 0x0B) {
-        static const char digits[10] = {'1','2','3','4','5','6','7','8','9','0'};
-        return digits[sc - 0x02];
+
+    if (!ext) {
+        if (sc >= 0x02 && sc <= 0x0B) {
+            static const char digits[10] = {'1','2','3','4','5','6','7','8','9','0'};
+            return digits[sc - 0x02];
+        }
     }
+
+    if (!ext && sc >= 0x47 && sc <= 0x52) {
+        static const char keypad[12] = {'7','8','9',0,'4','5','6',0,'1','2','3','0'};
+        char c = keypad[sc - 0x47];
+        if (c) return c;
+    }
+
     if (sc == 0x1C) return '\n';
     if (sc == 0x0E) return '\b';
     return 0;
@@ -712,10 +731,18 @@ static int login_focus = 1;
 static int caret_on = 1;
 static int caret_tick = 0;
 
+static int box_radius(void) {
+    int r = ui_k * 10 / 100;
+    if (r < 4) r = 4;
+    if (r > box_h / 2) r = box_h / 2;
+    return r;
+}
+
 static void dot_layout(int n, int *pr, int *pstep) {
     int r = scx(5);
     if (r < 3) r = 3;
-    int avail = box_w - scx(28);
+    int pad = box_radius();
+    int avail = box_w - pad * 2;
     int step = r * 4;
     if (n > 1) {
         if ((long)step * (n - 1) + 2 * r > avail) {
@@ -736,15 +763,13 @@ static void draw_login_box(void) {
     u32 box_line = pack(64, 84, 128);
     u32 white    = pack(240, 240, 240);
 
-    int box_r = ui_k * 10 / 100;
-    if (box_r < 4) box_r = 4;
-    if (box_r > box_h / 2) box_r = box_h / 2;
+    int box_r = box_radius();
 
     fill_round_rect(box_x, box_y, box_w, box_h, box_r, box_bg);
     draw_round_border(box_x, box_y, box_w, box_h, 2, box_r, box_line);
 
     int dy = box_y + box_h / 2;
-    int dx = box_x + scx(8);
+    int dx = box_x + box_r;
 
     int r, step;
     dot_layout(pwd_len, &r, &step);
@@ -762,8 +787,6 @@ static void draw_login_box(void) {
         int cw = scx(2);
         if (cw < 1) cw = 1;
         if (cw > 3) cw = 3;
-        if (pwd_len == 0)
-            dx = box_x + scx(8);
         for (int j = -ch / 2; j <= ch / 2; j++)
             for (int i = 0; i < cw; i++)
                 px(dx + i, dy + j, white);
