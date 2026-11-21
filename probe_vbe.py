@@ -70,8 +70,8 @@ def main():
         if keys:
             time.sleep(2.0)
         if len(sys.argv) > 4:
-            for spec in sys.argv[4].split("|"):
-                mx, my = spec.split(",")
+            for spec in sys.argv[4].split(";"):
+                mx, my = spec.split(":")
                 s.sendall(("mouse_move %s %s\n" % (mx, my)).encode())
                 time.sleep(1.0)
                 if len(sys.argv) > 5 and sys.argv[5] == "click":
