@@ -509,10 +509,6 @@ static char kbd_poll(void) {
     }
     if (sc == 0x1C) return '\n';
     if (sc == 0x0E) return '\b';
-    if (sc >= 0x10 && sc <= 0x19) {
-        static const char letters[10] = {'q','w','e','r','t','y','u','i','o','p'};
-        return letters[sc - 0x10];
-    }
     return 0;
 }
 
@@ -999,6 +995,7 @@ static void login_screen(void) {
         }
 
         if (pwd_len < PWD_MAX) {
+            if (ch < '0' || ch > '9') continue;
             pwd_input[pwd_len++] = ch;
             pwd_input[pwd_len] = 0;
             cursor_erase();
