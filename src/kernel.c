@@ -123,6 +123,33 @@ static u32 get_px(int x, int y) {
     return (u32)(*(u16 *)(fb + off));
 }
 
+static void hspan(int x, int y, int w, u32 c) {
+    if (w <= 0) return;
+    if (y < 0 || (u32)y >= scr_h) return;
+    if (x < 0) { w += x; x = 0; }
+    if (x >= (int)scr_w) return;
+    if (x + w > (int)scr_w) w = (int)scr_w - x;
+    if (w <= 0) return;
+
+    u32 off = (u32)y * fb_pitch + (u32)x * (fb_bpp / 8);
+    if (fb_bpp == 32) {
+        u32 *p = (u32 *)(fb + off);
+        for (int i = 0; i < w; i++) p[i] = c;
+    } else if (fb_bpp == 24) {
+        u8 *p = fb + off;
+        u8 c0 = (u8)(c & 0xFF);
+        u8 c1 = (u8)((c >> 8) & 0xFF);
+        u8 c2 = (u8)((c >> 16) & 0xFF);
+        for (int i = 0; i < w; i++) {
+            p[0] = c0; p[1] = c1; p[2] = c2;
+            p += 3;
+        }
+    } else {
+        u16 *p = (u16 *)(fb + off);
+        for (int i = 0; i < w; i++) p[i] = (u16)c;
+    }
+}
+
 static void bg_rgb(int y, u8 *r, u8 *g, u8 *b) {
     if (y < 0) y = 0;
     if ((u32)y >= scr_h) y = (int)scr_h - 1;
@@ -142,18 +169,13 @@ static u32 bg_at(int y) {
 static void cursor_redraw(void);
 
 static void fill_bg_rect(int x, int y, int w, int h) {
-    for (int j = 0; j < h; j++) {
-        u32 c = bg_at(y + j);
-        for (int i = 0; i < w; i++) px(x + i, y + j, c);
-    }
+    for (int j = 0; j < h; j++)
+        hspan(x, y + j, w, bg_at(y + j));
 }
 
 static void draw_background(void) {
-    for (u32 y = 0; y < scr_h; y++) {
-        u32 c = bg_at((int)y);
-        for (u32 x = 0; x < scr_w; x++)
-            px((int)x, (int)y, c);
-    }
+    for (u32 y = 0; y < scr_h; y++)
+        hspan(0, (int)y, (int)scr_w, bg_at((int)y));
 }
 
 static void draw_logo(int cx, int cy, int w, int h) {
@@ -580,11 +602,37 @@ static int in_round(int i, int j, int w, int h, int r) {
     return a * a + b * b <= 4 * r * r;
 }
 
+static int round_span(int j, int w, int h, int r, int *ox, int *ow) {
+    if (r < 1) { *ox = 0; *ow = w; return 1; }
+    if (r * 2 > w) r = w / 2;
+    if (r * 2 > h) r = h / 2;
+    if (r < 1) { *ox = 0; *ow = w; return 1; }
+
+    int inset = 0;
+    if (j < r || j >= h - r) {
+        int b = (j < r) ? 2 * j + 1 - 2 * r : 2 * (j - (h - r)) + 1;
+        int rr = 4 * r * r - b * b;
+        if (rr < 0) return 0;
+        int lo = 0;
+        while (lo < r) {
+            int a = 2 * lo + 1 - 2 * r;
+            if (a * a <= rr) break;
+            lo++;
+        }
+        inset = lo;
+    }
+    if (inset >= w) return 0;
+    *ox = inset;
+    *ow = w - 2 * inset;
+    return 1;
+}
+
 static void fill_round_rect(int x, int y, int w, int h, int r, u32 c) {
-    for (int j = 0; j < h; j++)
-        for (int i = 0; i < w; i++)
-            if (in_round(i, j, w, h, r))
-                px(x + i, y + j, c);
+    for (int j = 0; j < h; j++) {
+        int ox, ow;
+        if (!round_span(j, w, h, r, &ox, &ow)) continue;
+        hspan(x + ox, y + j, ow, c);
+    }
 }
 
 static void draw_round_border(int x, int y, int w, int h, int t, int r, u32 c) {
@@ -593,13 +641,22 @@ static void draw_round_border(int x, int y, int w, int h, int t, int r, u32 c) {
     int ih = h - 2 * t;
     int ir = r - t;
     if (ir < 0) ir = 0;
+
     for (int j = 0; j < h; j++) {
-        for (int i = 0; i < w; i++) {
-            if (!in_round(i, j, w, h, r)) continue;
-            if (iw > 0 && ih > 0 &&
-                in_round(i - t, j - t, iw, ih, ir)) continue;
-            px(x + i, y + j, c);
+        int ox, ow;
+        if (!round_span(j, w, h, r, &ox, &ow)) continue;
+
+        if (iw > 0 && ih > 0 && j >= t && j < h - t) {
+            int ix, iwv;
+            if (round_span(j - t, iw, ih, ir, &ix, &iwv)) {
+                int left = t + ix;
+                int right = w - t - ix - iwv;
+                if (left > 0) hspan(x + ox, y + j, left, c);
+                if (right > 0) hspan(x + w - right, y + j, right, c);
+                continue;
+            }
         }
+        hspan(x + ox, y + j, ow, c);
     }
 }
 
@@ -842,23 +899,462 @@ static void draw_login_message(const char *msg, int bad) {
     draw_string((int)scr_w / 2 - w / 2, y, msg, sc, sy, color);
 }
 
-static void draw_welcome(void) {
-    int cx = (int)scr_w / 2;
+#define BTN_NONE       -1
+#define BTN_SHUTDOWN    1
+#define BTN_RESTART     2
+#define BTN_KEYBOARD    3
+#define BTN_WIN_MIN     4
+#define BTN_WIN_MAX     5
+#define BTN_WIN_CLOSE   6
+#define BTN_KBD_MIN     7
+#define BTN_KBD_MAX     8
+#define BTN_KBD_CLOSE   9
+
+static int btn_sh_x, btn_sh_y, btn_sh_w;
+static int btn_rs_x, btn_rs_w;
+static int btn_kb_x, btn_kb_y, btn_kb_w;
+static int btn_h = 24;
+
+static int win_x, win_y, win_w, win_h;
+static int win_ctrl[5];
+static int win_visible = 1;
+static int win_big = 0;
+static int win_min = 0;
+
+static int kbd_visible = 0;
+static int kbd_win_x, kbd_win_y, kbd_win_w, kbd_win_h;
+static int kbd_ctrl[5];
+static int kbd_big = 0;
+static int kbd_min = 0;
+
+static int hover_btn = BTN_NONE;
+
+static int ui_font_sx(void) {
+    int sx = ui_k * 2 / 100;
+    if (sx < 1) sx = 1;
+    return sx;
+}
+
+static int ui_border_t(void) {
+    int t = ui_k * 7 / 100;
+    if (t < 3) t = 3;
+    if (t > 10) t = 10;
+    return t;
+}
+
+static void draw_line(int x0, int y0, int x1, int y1, int th, u32 c) {
+    int dx = x1 - x0;
+    int dy = y1 - y0;
+    int ax = dx < 0 ? -dx : dx;
+    int ay = dy < 0 ? -dy : dy;
+    int steps = ax > ay ? ax : ay;
+    if (steps < 1) steps = 1;
+    for (int i = 0; i <= steps; i++) {
+        int x = x0 + dx * i / steps;
+        int y = y0 + dy * i / steps;
+        for (int j = 0; j < th; j++)
+            for (int k = 0; k < th; k++)
+                px(x + k, y + j, c);
+    }
+}
+
+static void draw_button(int x, int y, int w, int h, int id, const char *label) {
+    int r = scy(10);
+    if (r < 4) r = 4;
+    if (r > h / 2) r = h / 2;
+
+    int hot = (hover_btn == id);
+    u32 fill = hot ? pack(66, 82, 122) : pack(38, 46, 68);
+    u32 line = hot ? pack(152, 178, 228) : pack(92, 108, 150);
+    u32 fg   = pack(236, 240, 248);
+
+    fill_round_rect(x, y, w, h, r, fill);
+    draw_round_border(x, y, w, h, 2, r, line);
+
+    int fs = ui_font_sx();
+    int tw = string_width(label, fs);
+    int th = 16 * fs;
+    draw_string(x + (w - tw) / 2, y + (h - th) / 2, label, fs, fs, fg);
+}
+
+static void window_content_rect(int x, int y, int w, int h,
+                                int *ix, int *iy, int *iw, int *ih) {
+    int t = ui_border_t();
+    int fs = ui_font_sx();
+    int title_h = 16 * fs + scy(18);
+    int m = scx(6);
+    if (m < 2) m = 2;
+    *ix = x + t + m;
+    *iy = y + title_h;
+    *iw = w - 2 * (t + m);
+    *ih = (y + h - t - m) - *iy;
+}
+
+static int window_title_h(void) {
+    int fs = ui_font_sx();
+    return 16 * fs + scy(18);
+}
+
+static void draw_window(int x, int y, int w, int h,
+                        const char *title, const char *content, int *out,
+                        int minimized) {
+    int t = ui_border_t();
+    int r = scy(16);
+    if (r < 8) r = 8;
+
+    u32 white = pack(250, 250, 252);
+    u32 black = pack(10, 10, 12);
+    u32 red   = pack(222, 42, 42);
+
+    int fs = ui_font_sx();
+    int title_h = window_title_h();
+    if (minimized) h = title_h;
+    if (h < r * 2) r = h / 2;
+
+    fill_round_rect(x, y, w, h, r, white);
+    draw_round_border(x, y, w, h, t, r, black);
+
+    int tx = x + t + scx(12);
+    int ty = y + (title_h - 16 * fs) / 2;
+    draw_string(tx, ty, title, fs, fs, black);
+
+    int cs = scy(22);
+    if (cs < 14) cs = 14;
+    if (cs > title_h - scy(8)) cs = title_h - scy(8);
+    if (cs < 10) cs = 10;
+    int cgap = scx(6);
+    if (cgap < 3) cgap = 3;
+    int cy = y + (title_h - cs) / 2;
+    int cx_close = x + w - t - scx(8) - cs;
+    int cx_max   = cx_close - cgap - cs;
+    int cx_min   = cx_max - cgap - cs;
+
+    if (out) {
+        out[0] = cx_min;
+        out[1] = cx_max;
+        out[2] = cx_close;
+        out[3] = cy;
+        out[4] = cs;
+    }
+
+    int cr = cs / 4;
+    if (cr < 3) cr = 3;
+
+    fill_round_rect(cx_min, cy, cs, cs, cr, black);
+    int bar_w = cs * 3 / 5;
+    int bar_h = cs / 7;
+    if (bar_h < 2) bar_h = 2;
+    for (int j = 0; j < bar_h; j++)
+        for (int i = 0; i < bar_w; i++)
+            px(cx_min + (cs - bar_w) / 2 + i, cy + (cs - bar_h) / 2 + j, white);
+
+    fill_round_rect(cx_max, cy, cs, cs, cr, black);
+    int in = cs / 5;
+    if (in < 3) in = 3;
+    draw_round_border(cx_max + in, cy + in, cs - 2 * in, cs - 2 * in, 2, 2, white);
+
+    fill_round_rect(cx_close, cy, cs, cs, cr, red);
+    int in2 = cs / 5;
+    if (in2 < 3) in2 = 3;
+    draw_line(cx_close + in2, cy + in2, cx_close + cs - in2, cy + cs - in2, 2, white);
+    draw_line(cx_close + cs - in2, cy + in2, cx_close + in2, cy + cs - in2, 2, white);
+
+    if (minimized) return;
+
+    int ix, iy, iw, ih;
+    window_content_rect(x, y, w, h, &ix, &iy, &iw, &ih);
+    if (iw < 4 || ih < 4) return;
+
+    int ri = r - t;
+    if (ri < 4) ri = 4;
+    fill_round_rect(ix, iy, iw, ih, ri, white);
+    draw_round_border(ix, iy, iw, ih, t, ri, black);
+
+    if (content && content[0]) {
+        int px_ = ix + t + scx(12);
+        int py_ = iy + t + scy(10);
+        draw_string(px_, py_, content, fs, fs, black);
+    }
+}
+
+static void desktop_layout(void) {
+    int fs = ui_font_sx();
+    int gap = scx(8);
+    if (gap < 4) gap = 4;
+    int m = scx(18);
+    if (m < 8) m = 8;
+
+    btn_h = 16 * fs + scy(12);
+    if (btn_h < 20) btn_h = 20;
+
+    btn_sh_w = string_width("Shutdown", fs) + scx(28);
+    btn_rs_w = string_width("Restart", fs) + scx(28);
+    btn_kb_w = string_width("Keyboard", fs) + scx(28);
+    if (btn_kb_w < btn_sh_w) btn_kb_w = btn_sh_w;
+
+    int row2_y = (int)scr_h - m - btn_h;
+    int row1_y = row2_y - gap - btn_h;
+
+    btn_rs_x = (int)scr_w - m - btn_rs_w;
+    btn_sh_x = btn_rs_x - gap - btn_sh_w;
+    btn_sh_y = row2_y;
+
+    btn_kb_x = (int)scr_w - m - btn_kb_w;
+    btn_kb_y = row1_y;
+
+    int avail_bottom = row1_y - gap - scy(10);
+    if (win_big) {
+        win_x = scx(12);
+        win_y = scy(12);
+    } else {
+        win_x = scx(34);
+        win_y = scy(30);
+    }
+    win_w = (int)scr_w - 2 * win_x;
+    win_h = avail_bottom - win_y;
+    if (win_h < scy(120)) win_h = scy(120);
+    if (win_w < scx(200)) win_w = scx(200);
+}
+
+static void draw_keyboard_window(void) {
+    int kw = (int)scr_w * 52 / 100;
+    int kh = (int)scr_h * 34 / 100;
+    if (kw < 260) kw = 260;
+    if (kh < 150) kh = 150;
+    if (kbd_big) {
+        kw = (int)scr_w * 86 / 100;
+        kh = (int)scr_h * 62 / 100;
+    }
+    int th = window_title_h();
+    if (kbd_min) kh = th;
+    int kx = ((int)scr_w - kw) / 2;
+    int ky = ((int)scr_h - kh) / 2;
+    if (kbd_min) {
+        ky = btn_kb_y - scy(10) - kh;
+        if (ky < scy(8)) ky = scy(8);
+    }
+
+    kbd_win_x = kx;
+    kbd_win_y = ky;
+    kbd_win_w = kw;
+    kbd_win_h = kh;
+
+    draw_window(kx, ky, kw, kh, "Keyboard", "", kbd_ctrl, kbd_min);
+    if (kbd_min) return;
+
+    int ix, iy, iw, ih;
+    window_content_rect(kx, ky, kw, kh, &ix, &iy, &iw, &ih);
+    if (iw < 40 || ih < 40) return;
+
+    static const char *rows[3] = {"QWERTYUIOP", "ASDFGHJKL", "ZXCVBNM"};
+    int pad = scx(8);
+    if (pad < 4) pad = 4;
+    int gap = scx(4);
+    if (gap < 2) gap = 2;
+
+    int rows_h = ih - pad * 2;
+    int key_h = (rows_h - gap * 2) / 3;
+    if (key_h < 10) key_h = 10;
+    int total_h = key_h * 3 + gap * 2;
+    int ty = iy + (ih - total_h) / 2;
+
+    u32 kbg = pack(46, 54, 78);
+    u32 kln = pack(98, 114, 158);
+    u32 kfg = pack(232, 236, 245);
+
+    for (int r = 0; r < 3; r++) {
+        int n = 0;
+        while (rows[r][n]) n++;
+        int key_w = (iw - pad * 2 - gap * (n - 1)) / n;
+        if (key_w < 6) key_w = 6;
+        int row_w = key_w * n + gap * (n - 1);
+        int tx = ix + (iw - row_w) / 2;
+        int ky_ = ty + r * (key_h + gap);
+
+        for (int i = 0; i < n; i++) {
+            int kx_ = tx + i * (key_w + gap);
+            int kr = scx(5);
+            if (kr < 3) kr = 3;
+            if (kr > key_h / 2) kr = key_h / 2;
+
+            fill_round_rect(kx_, ky_, key_w, key_h, kr, kbg);
+            draw_round_border(kx_, ky_, key_w, key_h, 1, kr, kln);
+
+            int fs = 1;
+            if (key_h >= 34 && key_w >= 22) fs = 2;
+            int tw = 8 * fs;
+            int th = 16 * fs;
+            if (tw > key_w - 4 || th > key_h - 4) fs = 1;
+            tw = 8 * fs;
+            th = 16 * fs;
+            char s[2];
+            s[0] = rows[r][i];
+            s[1] = 0;
+            draw_string(kx_ + (key_w - tw) / 2, ky_ + (key_h - th) / 2,
+                        s, fs, fs, kfg);
+        }
+    }
+}
+
+static void draw_desktop(void) {
+    desktop_layout();
     draw_background();
 
-    int logo_w = scx(104);
-    int logo_h = scy(104);
-    if (logo_w < 32) logo_w = 32;
-    if (logo_h < 32) logo_h = 32;
-    int logo_cy = (int)scr_h / 2 - scy(60);
-    draw_logo(cx, logo_cy, logo_w, logo_h);
+    if (win_visible)
+        draw_window(win_x, win_y, win_w, win_h, "Window", "Hello", win_ctrl, win_min);
+    else
+        win_ctrl[4] = 0;
 
-    int sc = ui_k * 4 / 200;
-    if (sc < 1) sc = 1;
-    int sy = ui_k * 4 / 200;
-    if (sy < 1) sy = 1;
-    draw_string_center((int)scr_h / 2 + scy(40),
-                       "Welcome to LunarOS", sc, sy, pack(240, 240, 240));
+    if (kbd_visible)
+        draw_keyboard_window();
+
+    draw_button(btn_sh_x, btn_sh_y, btn_sh_w, btn_h, BTN_SHUTDOWN, "Shutdown");
+    draw_button(btn_rs_x, btn_sh_y, btn_rs_w, btn_h, BTN_RESTART, "Restart");
+    draw_button(btn_kb_x, btn_kb_y, btn_kb_w, btn_h, BTN_KEYBOARD, "Keyboard");
+}
+
+static int point_in(int mx, int my, int x, int y, int w, int h) {
+    return mx >= x && mx < x + w && my >= y && my < y + h;
+}
+
+static int ctrl_hit(int mx, int my, int *ctrl, int first) {
+    if (!ctrl || ctrl[4] <= 0) return BTN_NONE;
+    int cs = ctrl[4];
+    int cy = ctrl[3];
+    for (int i = 0; i < 3; i++)
+        if (point_in(mx, my, ctrl[i], cy, cs, cs))
+            return first + i;
+    return BTN_NONE;
+}
+
+static int desktop_hit(int mx, int my) {
+    if (kbd_visible) {
+        int id = ctrl_hit(mx, my, kbd_ctrl, BTN_KBD_MIN);
+        if (id != BTN_NONE) return id;
+        if (point_in(mx, my, kbd_win_x, kbd_win_y, kbd_win_w, kbd_win_h))
+            return BTN_NONE;
+    }
+
+    if (win_visible) {
+        int id = ctrl_hit(mx, my, win_ctrl, BTN_WIN_MIN);
+        if (id != BTN_NONE) return id;
+        int wh = win_min ? window_title_h() : win_h;
+        if (point_in(mx, my, win_x, win_y, win_w, wh))
+            return BTN_NONE;
+    }
+
+    if (point_in(mx, my, btn_sh_x, btn_sh_y, btn_sh_w, btn_h))
+        return BTN_SHUTDOWN;
+    if (point_in(mx, my, btn_rs_x, btn_sh_y, btn_rs_w, btn_h))
+        return BTN_RESTART;
+    if (point_in(mx, my, btn_kb_x, btn_kb_y, btn_kb_w, btn_h))
+        return BTN_KEYBOARD;
+
+    return BTN_NONE;
+}
+
+static void machine_poweroff(void) {
+    serial_puts("[SYS] power off\n");
+    outw(0x604, 0x2000);
+    outw(0xB004, 0x2000);
+    outw(0x4004, 0x3400);
+    for (;;) __asm__ __volatile__("cli; hlt");
+}
+
+static void machine_restart(void) {
+    serial_puts("[SYS] restart\n");
+    outb(0x64, 0xFE);
+    for (;;) __asm__ __volatile__("cli; hlt");
+}
+
+static void desktop_repaint(void) {
+    cursor_erase();
+    draw_desktop();
+    cursor_redraw();
+}
+
+static void desktop_screen(void) {
+    hover_btn = BTN_NONE;
+    win_visible = 1;
+    win_big = 0;
+    win_min = 0;
+    kbd_visible = 0;
+    kbd_big = 0;
+    kbd_min = 0;
+
+    cursor_set(CURSOR_ARROW);
+    cursor_erase();
+    draw_desktop();
+    cursor_redraw();
+
+    while (1) {
+        delay_us(1000);
+        mouse_poll();
+
+        int hov = desktop_hit(mouse_x, mouse_y);
+        if (hov != hover_btn) {
+            hover_btn = hov;
+            mouse_moved = 0;
+            desktop_repaint();
+        } else {
+            cursor_update();
+        }
+
+        if (mouse_press) {
+            mouse_press = 0;
+            int id = desktop_hit(mouse_x, mouse_y);
+            if (id == BTN_SHUTDOWN) {
+                machine_poweroff();
+            } else if (id == BTN_RESTART) {
+                machine_restart();
+            } else if (id == BTN_KEYBOARD) {
+                kbd_visible = !kbd_visible;
+                if (!kbd_visible) {
+                    kbd_big = 0;
+                    kbd_min = 0;
+                }
+                hover_btn = BTN_NONE;
+                desktop_repaint();
+            } else if (id == BTN_WIN_MIN) {
+                win_min = !win_min;
+                hover_btn = BTN_NONE;
+                desktop_repaint();
+            } else if (id == BTN_WIN_MAX) {
+                win_big = !win_big;
+                if (win_big) win_min = 0;
+                hover_btn = BTN_NONE;
+                desktop_repaint();
+            } else if (id == BTN_WIN_CLOSE) {
+                win_visible = 0;
+                win_big = 0;
+                win_min = 0;
+                hover_btn = BTN_NONE;
+                desktop_repaint();
+            } else if (id == BTN_KBD_MIN) {
+                kbd_min = !kbd_min;
+                hover_btn = BTN_NONE;
+                desktop_repaint();
+            } else if (id == BTN_KBD_MAX) {
+                kbd_big = !kbd_big;
+                if (kbd_big) kbd_min = 0;
+                hover_btn = BTN_NONE;
+                desktop_repaint();
+            } else if (id == BTN_KBD_CLOSE) {
+                kbd_visible = 0;
+                kbd_big = 0;
+                kbd_min = 0;
+                hover_btn = BTN_NONE;
+                desktop_repaint();
+            } else if (!win_visible) {
+                win_visible = 1;
+                win_min = 0;
+                hover_btn = BTN_NONE;
+                desktop_repaint();
+            }
+        }
+
+        kbd_poll();
+    }
 }
 
 static void run_boot_animation(void) {
@@ -1076,16 +1572,6 @@ void kernel_main(u32 lfb, u32 width, u32 height, u32 bpp, u32 pitch) {
 
     login_screen();
 
-    cursor_set(CURSOR_ARROW);
-    cursor_erase();
-    draw_welcome();
-    cursor_redraw();
     serial_puts("[KERNEL] logged in\n");
-
-    while (1) {
-        kbd_poll();
-        mouse_poll();
-        cursor_update();
-        delay_us(1000);
-    }
+    desktop_screen();
 }
