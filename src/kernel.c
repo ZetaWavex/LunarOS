@@ -755,13 +755,20 @@ static void draw_login_static(void) {
     int dy = box_y + box_h / 2;
     int dx = box_x + scx(14);
 
+    int step = dotx * 4;
+    int avail = box_w - scx(28);
+    if (pwd_len > 1 && step * (pwd_len - 1) + dotx * 2 > avail) {
+        step = (avail - dotx * 2) / (pwd_len - 1);
+        if (step < dotx * 2) step = dotx * 2;
+    }
+
     for (int i = 0; i < pwd_len; i++) {
         for (int j = -doty; j <= doty; j++)
             for (int ii = -dotx; ii <= dotx; ii++)
                 if ((long)ii * ii * doty * doty + (long)j * j * dotx * dotx
                     <= (long)dotx * dotx * doty * doty)
                     px(dx + ii, dy + j, white);
-        dx += dotx * 4;
+        dx += step;
     }
 }
 
@@ -867,8 +874,8 @@ static void login_screen(void) {
     if (sc_msg_x < 1) sc_msg_x = 1;
     if (sc_msg_y < 1) sc_msg_y = 1;
 
-    box_w = scx(300);
-    box_h = scy(42);
+    box_w = scx(232);
+    box_h = scy(32);
     if (box_w < 160) box_w = 160;
     if (box_h < 24) box_h = 24;
     box_x = ((int)scr_w - box_w) / 2;
