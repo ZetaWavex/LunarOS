@@ -97,6 +97,21 @@ static int scy(int v) { return v * ui_k / 100; }
 static int ui_font_sx(void);
 static int ui_border_t(void);
 
+static int clip_on = 0;
+static int clip_x0, clip_y0, clip_x1, clip_y1;
+
+static void clip_set(int x, int y, int w, int h) {
+    clip_on = 1;
+    clip_x0 = x;
+    clip_y0 = y;
+    clip_x1 = x + w;
+    clip_y1 = y + h;
+}
+
+static void clip_reset(void) {
+    clip_on = 0;
+}
+
 static u32 pack(u8 r, u8 g, u8 b) {
     if (fb_bpp == 32) return ((u32)r << 16) | ((u32)g << 8) | (u32)b;
     if (fb_bpp == 24) return ((u32)r << 16) | ((u32)g << 8) | (u32)b;
@@ -105,6 +120,8 @@ static u32 pack(u8 r, u8 g, u8 b) {
 
 static void px(int x, int y, u32 c) {
     if (x < 0 || y < 0 || (u32)x >= scr_w || (u32)y >= scr_h) return;
+    if (clip_on && (x < clip_x0 || x >= clip_x1 || y < clip_y0 || y >= clip_y1))
+        return;
     u32 off = (u32)y * fb_pitch + (u32)x * (fb_bpp / 8);
     if (fb_bpp == 32) {
         *(u32 *)(fb + off) = c;
@@ -129,9 +146,14 @@ static u32 get_px(int x, int y) {
 static void hspan(int x, int y, int w, u32 c) {
     if (w <= 0) return;
     if (y < 0 || (u32)y >= scr_h) return;
+    if (clip_on && (y < clip_y0 || y >= clip_y1)) return;
     if (x < 0) { w += x; x = 0; }
     if (x >= (int)scr_w) return;
     if (x + w > (int)scr_w) w = (int)scr_w - x;
+    if (clip_on) {
+        if (x < clip_x0) { w -= clip_x0 - x; x = clip_x0; }
+        if (x + w > clip_x1) w = clip_x1 - x;
+    }
     if (w <= 0) return;
 
     u32 off = (u32)y * fb_pitch + (u32)x * (fb_bpp / 8);
@@ -669,6 +691,8 @@ static void draw_round_border(int x, int y, int w, int h, int t, int r, u32 c) {
 
 #define CURSOR_ARROW 0
 #define CURSOR_BEAM  1
+#define CURSOR_LINK  2
+#define CURSOR_COUNT 3
 
 typedef struct {
     const unsigned char *px;
@@ -677,11 +701,13 @@ typedef struct {
     int scale;
 } cursor_img_t;
 
-static const cursor_img_t cursor_imgs[2] = {
+static const cursor_img_t cursor_imgs[CURSOR_COUNT] = {
     { cursor_arrow_rgba, CURSOR_ARROW_W, CURSOR_ARROW_H,
       CURSOR_ARROW_HOTX, CURSOR_ARROW_HOTY, 64 },
     { cursor_beam_rgba, CURSOR_BEAM_W, CURSOR_BEAM_H,
       CURSOR_BEAM_HOTX, CURSOR_BEAM_HOTY, 20 },
+    { cursor_link_rgba, CURSOR_LINK_W, CURSOR_LINK_H,
+      CURSOR_LINK_HOTX, CURSOR_LINK_HOTY, 64 },
 };
 
 #define UI_K_MAX 400
@@ -1070,6 +1096,28 @@ static void draw_login_static(void) {
         draw_login_kbd();
 }
 
+static void login_paint_rect(int x, int y, int w, int h) {
+    if (w <= 0 || h <= 0) return;
+    cursor_erase();
+    clip_set(x, y, w, h);
+    draw_login_static();
+    clip_reset();
+    cursor_redraw();
+}
+
+static void login_paint_corner(int id) {
+    if (id == BTN_LOGIN_POWER)
+        login_paint_rect(lbtn_pw_x - 2, lbtn_pw_y - 2, lbtn_size + 4, lbtn_size + 4);
+    else if (id == BTN_LOGIN_KBD)
+        login_paint_rect(lbtn_kb_x - 2, lbtn_kb_y - 2, lbtn_size + 4, lbtn_size + 4);
+}
+
+static void login_paint_key(int idx) {
+    if (idx < 0 || idx >= lkb_nkey) return;
+    login_paint_rect(lkb_key[idx][0] - 2, lkb_key[idx][1] - 2,
+                     lkb_key[idx][2] + 4, lkb_key[idx][3] + 4);
+}
+
 static void draw_login_message(const char *msg, int bad) {
     int sc = ui_k * 3 / 200;
     if (sc < 1) sc = 1;
@@ -1452,6 +1500,53 @@ static void machine_restart(void) {
     for (;;) __asm__ __volatile__("cli; hlt");
 }
 
+static void desktop_paint_rect(int x, int y, int w, int h) {
+    if (w <= 0 || h <= 0) return;
+    cursor_erase();
+    clip_set(x, y, w, h);
+    draw_desktop();
+    clip_reset();
+    cursor_redraw();
+}
+
+static int ctrl_rect(int *ctrl, int idx, int *x, int *y, int *w, int *h) {
+    if (!ctrl || ctrl[4] <= 0) return 0;
+    *x = ctrl[idx] - 2;
+    *y = ctrl[3] - 2;
+    *w = ctrl[4] + 4;
+    *h = ctrl[4] + 4;
+    return 1;
+}
+
+static int desktop_btn_rect(int id, int *x, int *y, int *w, int *h) {
+    if (id == BTN_SHUTDOWN) {
+        *x = btn_sh_x - 2; *y = btn_sh_y - 2;
+        *w = btn_sh_w + 4; *h = btn_h + 4;
+        return 1;
+    }
+    if (id == BTN_RESTART) {
+        *x = btn_rs_x - 2; *y = btn_sh_y - 2;
+        *w = btn_rs_w + 4; *h = btn_h + 4;
+        return 1;
+    }
+    if (id == BTN_KEYBOARD) {
+        *x = btn_kb_x - 2; *y = btn_kb_y - 2;
+        *w = btn_kb_w + 4; *h = btn_h + 4;
+        return 1;
+    }
+    if (id >= BTN_WIN_MIN && id <= BTN_WIN_CLOSE)
+        return ctrl_rect(win_ctrl, id - BTN_WIN_MIN, x, y, w, h);
+    if (id >= BTN_KBD_MIN && id <= BTN_KBD_CLOSE)
+        return ctrl_rect(kbd_ctrl, id - BTN_KBD_MIN, x, y, w, h);
+    return 0;
+}
+
+static void desktop_paint_btn(int id) {
+    int x, y, w, h;
+    if (desktop_btn_rect(id, &x, &y, &w, &h))
+        desktop_paint_rect(x, y, w, h);
+}
+
 static void desktop_repaint(void) {
     cursor_erase();
     draw_desktop();
@@ -1479,12 +1574,17 @@ static void desktop_screen(void) {
         int hov = desktop_hit(mouse_x, mouse_y);
         if (hov == BTN_DESKTOP) hov = BTN_NONE;
         if (hov != hover_btn) {
+            int old = hover_btn;
             hover_btn = hov;
             mouse_moved = 0;
-            desktop_repaint();
-        } else {
-            cursor_update();
+            desktop_paint_btn(old);
+            desktop_paint_btn(hov);
         }
+        if (hov == BTN_NONE)
+            cursor_set(CURSOR_ARROW);
+        else
+            cursor_set(CURSOR_LINK);
+        cursor_update();
 
         if (mouse_press) {
             mouse_press = 0;
@@ -1663,11 +1763,16 @@ static void login_screen(void) {
         }
 
         if (hb != login_hover_btn || hk != login_hover_key) {
+            int ob = login_hover_btn;
+            int ok = login_hover_key;
             login_hover_btn = hb;
             login_hover_key = hk;
-            cursor_erase();
-            draw_login_static();
-            cursor_redraw();
+            mouse_moved = 0;
+            login_paint_corner(ob);
+            if (ob != hb) login_paint_corner(hb);
+            login_paint_key(ok);
+            if (ok != hk) login_paint_key(hk);
+            cursor_update();
         }
 
         if (mouse_press) {
@@ -1722,10 +1827,8 @@ static void login_screen(void) {
             }
         }
 
-        if (hb == BTN_LOGIN_POWER)
-            cursor_set(CURSOR_ARROW);
-        else if (hk >= 0 || hb == BTN_LOGIN_KBD)
-            cursor_set(CURSOR_ARROW);
+        if (hb == BTN_LOGIN_POWER || hk >= 0 || hb == BTN_LOGIN_KBD)
+            cursor_set(CURSOR_LINK);
         else
             cursor_set(in_box ? CURSOR_BEAM : CURSOR_ARROW);
         cursor_update();
