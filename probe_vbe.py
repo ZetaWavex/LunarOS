@@ -70,14 +70,15 @@ def main():
         if keys:
             time.sleep(2.0)
         if len(sys.argv) > 4:
-            mx, my = sys.argv[4].split(",")
-            s.sendall(("mouse_move %s %s\n" % (mx, my)).encode())
-            time.sleep(1.0)
-            if len(sys.argv) > 5 and sys.argv[5] == "click":
-                s.sendall(b"mouse_button 1\n")
-                time.sleep(0.15)
-                s.sendall(b"mouse_button 0\n")
-                time.sleep(1.5)
+            for spec in sys.argv[4].split("|"):
+                mx, my = spec.split(",")
+                s.sendall(("mouse_move %s %s\n" % (mx, my)).encode())
+                time.sleep(1.0)
+                if len(sys.argv) > 5 and sys.argv[5] == "click":
+                    s.sendall(b"mouse_button 1\n")
+                    time.sleep(0.15)
+                    s.sendall(b"mouse_button 0\n")
+                    time.sleep(1.5)
         s.sendall(('screendump "%s"\n' % SHOT.replace("\\", "/")).encode())
         time.sleep(2.5)
         s.close()
