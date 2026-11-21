@@ -917,6 +917,10 @@ static void login_screen(void) {
 
     pwd_len = 0;
     pwd_input[0] = 0;
+    login_focus = 1;
+    caret_on = 1;
+    caret_tick = 0;
+    mouse_press = 0;
 
     draw_login_static();
     cursor_redraw();
@@ -927,18 +931,20 @@ static void login_screen(void) {
     cursor_redraw();
 
     while (1) {
+        delay_us(1000);
         mouse_poll();
         int in_box = (mouse_x >= box_x && mouse_x < box_x + box_w &&
                       mouse_y >= box_y && mouse_y < box_y + box_h);
 
         if (mouse_press) {
             mouse_press = 0;
-            if (in_box && !login_focus) {
-                login_focus = 1;
+            int want = in_box ? 1 : 0;
+            if (want != login_focus || (want && !caret_on)) {
+                login_focus = want;
                 caret_tick = 0;
                 caret_on = 1;
                 cursor_erase();
-                draw_login_static();
+                draw_login_box();
                 cursor_redraw();
             }
         }
@@ -986,8 +992,7 @@ static void login_screen(void) {
                 pwd_len--;
                 pwd_input[pwd_len] = 0;
                 cursor_erase();
-                draw_login_static();
-                fill_bg_rect(0, msg_y - 2, (int)scr_w, msg_h);
+                draw_login_box();
                 cursor_redraw();
             }
             continue;
@@ -997,8 +1002,7 @@ static void login_screen(void) {
             pwd_input[pwd_len++] = ch;
             pwd_input[pwd_len] = 0;
             cursor_erase();
-            draw_login_static();
-            fill_bg_rect(0, msg_y - 2, (int)scr_w, msg_h);
+            draw_login_box();
             cursor_redraw();
         }
     }
