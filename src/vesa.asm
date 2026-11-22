@@ -1,6 +1,7 @@
 VBE_MODE_INFO_ADDR equ 0x7000
 VBE_FALLBACK_MODE  equ 0x114
 TARGET_AREA        equ 2073600
+BPP24_PENALTY      equ 500000
 
 vbe_lfb:   dd 0
 vbe_width: dd 0
@@ -82,6 +83,18 @@ serial_num16:
     call serial_char
     loop .emit
     popa
+    ret
+
+mode_pitch:
+    mov ax, [VBE_INFO_ADDR + 4]
+    cmp ax, 0x0300
+    jb .legacy
+    mov ax, [es:di + 50]
+    test ax, ax
+    jz .legacy
+    ret
+.legacy:
+    mov ax, [es:di + 16]
     ret
 
 set_vesa_mode:
@@ -180,7 +193,7 @@ set_vesa_mode:
     mov al, [es:di + 25]
     movzx eax, al
     mov [best_bpp], ax
-    mov ax, [es:di + 16]
+    call mode_pitch
     mov [best_pitch], ax
     mov eax, [es:di + 40]
     mov [best_lfb], eax
@@ -208,7 +221,7 @@ set_vesa_mode:
     mov al, [es:di + 25]
     movzx eax, al
     mov [best_bpp], ax
-    mov ax, [es:di + 16]
+    call mode_pitch
     mov [best_pitch], ax
     mov eax, [es:di + 40]
     mov [best_lfb], eax

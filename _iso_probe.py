@@ -29,7 +29,7 @@ def main():
 
     cmd = [
         QEMU,
-        "-vga", "std",
+        "-vga", os.environ.get("PROBE_VGA", "std"),
         "-m", "32",
         "-display", "none",
         "-serial", "file:" + ser,

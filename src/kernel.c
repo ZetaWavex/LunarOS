@@ -1852,6 +1852,34 @@ try_login:
 
 void kernel_main(u32 lfb, u32 width, u32 height, u32 bpp, u32 pitch) {
     gfx_info_t info;
+    u32 bytes_pp;
+    u32 min_pitch;
+
+    bytes_pp = bpp / 8;
+    if (bytes_pp == 0) bytes_pp = 1;
+    min_pitch = width * bytes_pp;
+
+    serial_puts("[KERNEL] vbe raw w=");
+    serial_putnum(width);
+    serial_puts(" h=");
+    serial_putnum(height);
+    serial_puts(" bpp=");
+    serial_putnum(bpp);
+    serial_puts(" pitch=");
+    serial_putnum(pitch);
+    serial_putc('\n');
+
+    if (pitch < min_pitch) {
+        if (pitch >= width) {
+            u32 cand = pitch * bytes_pp;
+            pitch = (cand >= min_pitch) ? cand : min_pitch;
+        } else {
+            pitch = min_pitch;
+        }
+        serial_puts("[KERNEL] pitch fixed to ");
+        serial_putnum(pitch);
+        serial_putc('\n');
+    }
 
     info.width  = width;
     info.height = height;
@@ -1881,7 +1909,9 @@ void kernel_main(u32 lfb, u32 width, u32 height, u32 bpp, u32 pitch) {
     serial_putnum(scr_h);
     serial_putc(' ');
     serial_putnum(fb_bpp);
-    serial_puts("bpp\n");
+    serial_puts("bpp pitch=");
+    serial_putnum(fb_pitch);
+    serial_putc('\n');
 
     load_password();
 
