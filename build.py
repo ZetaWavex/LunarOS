@@ -260,6 +260,8 @@ ISO_PATHM_LBA = 21
 ISO_ROOT_LBA = 22
 ISO_IMAGE_LBA = 23
 
+BOOT_MEDIA_HD = 4
+
 
 def _iso_time7():
     now = time.gmtime()
@@ -344,7 +346,7 @@ def _iso_terminator():
     return bytes(term)
 
 
-def _iso_boot_catalog(image_lba):
+def _iso_boot_catalog(image_lba, boot_sectors):
     cat = bytearray(ISO_BLOCK)
     cat[0] = 1
     cat[1] = 0
@@ -357,11 +359,11 @@ def _iso_boot_catalog(image_lba):
 
     e = 32
     cat[e] = 0x88
-    cat[e + 1] = 2
+    cat[e + 1] = BOOT_MEDIA_HD
     cat[e + 2:e + 4] = struct.pack("<H", 0)
     cat[e + 4] = 0
     cat[e + 5] = 0
-    cat[e + 6:e + 8] = struct.pack("<H", 1)
+    cat[e + 6:e + 8] = struct.pack("<H", boot_sectors)
     cat[e + 8:e + 12] = struct.pack("<I", image_lba)
     return bytes(cat)
 
@@ -381,14 +383,14 @@ def _iso_path_table(lba, big):
 def make_iso(img_path, iso_path):
     with open(img_path, "rb") as f:
         raw = f.read()
-    if len(raw) > FLOPPY_144:
-        print(f"[ERROR] image {len(raw)} B exceeds 1.44MB floppy ({FLOPPY_144} B)")
-        sys.exit(1)
-    boot_img = raw + b"\x00" * (FLOPPY_144 - len(raw))
+    boot_img = raw
+    if len(boot_img) % 512:
+        boot_img += b"\x00" * (512 - len(boot_img) % 512)
 
     when = _iso_time7()
-    image_blocks = FLOPPY_144 // ISO_BLOCK
+    image_blocks = (len(boot_img) + ISO_BLOCK - 1) // ISO_BLOCK
     volume_blocks = ISO_IMAGE_LBA + image_blocks
+    boot_sectors = len(boot_img) // 512
 
     root_rec = _iso_dir_record(ISO_ROOT_LBA, ISO_BLOCK, b"\x00", 2, when)
     path_l = _iso_path_table(ISO_ROOT_LBA, False)
@@ -408,7 +410,7 @@ def make_iso(img_path, iso_path):
     sectors.append(_iso_pvd(volume_blocks, root_rec, path_size, when))
     sectors.append(_iso_boot_record())
     sectors.append(_iso_terminator())
-    sectors.append(_iso_boot_catalog(ISO_IMAGE_LBA))
+    sectors.append(_iso_boot_catalog(ISO_IMAGE_LBA, boot_sectors))
     sectors.append(path_l + b"\x00" * (ISO_BLOCK - len(path_l)))
     sectors.append(path_m + b"\x00" * (ISO_BLOCK - len(path_m)))
     sectors.append(bytes(root_dir))
@@ -422,7 +424,8 @@ def make_iso(img_path, iso_path):
     total = os.path.getsize(iso_path)
     print(f"[ISO] {os.path.basename(iso_path)}: {total} bytes "
           f"({len(sectors)} blocks)")
-    print(f"  El Torito: 1.44MB floppy emulation, boot image at block {ISO_IMAGE_LBA}")
+    print(f"  El Torito: hard-disk emulation, {boot_sectors} sectors, "
+          f"boot image at block {ISO_IMAGE_LBA}")
     return iso_path
 
 

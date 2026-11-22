@@ -18,7 +18,8 @@ def main():
     keys = sys.argv[3] if len(sys.argv) > 3 else ""
     ser = os.path.join(OUT, tag + "_serial.log")
     shot = os.path.join(OUT, tag + ".ppm")
-    for p in (ser, shot):
+    dbg = os.path.join(OUT, tag + "_seabios.log")
+    for p in (ser, shot, dbg):
         if os.path.exists(p):
             os.remove(p)
 
@@ -32,6 +33,8 @@ def main():
         "-m", "32",
         "-display", "none",
         "-serial", "file:" + ser,
+        "-chardev", "file,id=dbg,path=" + dbg,
+        "-device", "isa-debugcon,iobase=0x402,chardev=dbg",
         "-monitor", "tcp:127.0.0.1:%d,server,nowait" % MON_PORT,
         "-cdrom", ISO,
         "-boot", "d",
@@ -75,6 +78,12 @@ def main():
         print("(none)")
     print("--- screenshot ---")
     print("exists:", os.path.exists(shot))
+    print("--- seabios ---")
+    if os.path.exists(dbg):
+        with open(dbg, "r", errors="replace") as f:
+            print(f.read()[-6000:])
+    else:
+        print("(none)")
 
 
 if __name__ == "__main__":
