@@ -42,6 +42,8 @@ GCC = os.path.join(MINGW_BIN, "gcc.exe")
 OBJCOPY = os.path.join(MINGW_BIN, "objcopy.exe")
 
 STAGE2_SECTORS = 10
+STAGE2_LBA = 10
+KERNEL_LBA = 66
 
 def run(cmd, desc=""):
     print(f"[BUILD] {desc}")
@@ -489,16 +491,14 @@ def build():
     kernel_size = os.path.getsize(os.path.join(BUILD, "kernel.bin"))
     kernel_sectors = (kernel_size + 511) // 512
 
-    k_lba = 1 + STAGE2_SECTORS
-    if k_lba + kernel_sectors > PWD_LBA:
+    if KERNEL_LBA + kernel_sectors > PWD_LBA:
         print(f"[ERROR] kernel overlaps password sector "
-              f"(kernel ends at LBA {k_lba + kernel_sectors}, PWD_LBA={PWD_LBA})")
+              f"(kernel ends at LBA {KERNEL_LBA + kernel_sectors}, PWD_LBA={PWD_LBA})")
         sys.exit(1)
-    run([NASM, f"-DK_LBA={k_lba}", f"-DKERNEL_SECTORS={kernel_sectors}",
-         "-f", "bin", "-i", SRC + "\\",
+    run([NASM, "-f", "bin", "-i", SRC + "\\",
          os.path.join(SRC, "stage2.asm"),
          "-o", os.path.join(BUILD, "stage2.bin")],
-        f"Assembling stage2 (KERNEL_SECTORS={kernel_sectors})")
+        "Assembling stage2")
 
     boot_size = os.path.getsize(os.path.join(BUILD, "boot.bin"))
     s2_size_before = os.path.getsize(os.path.join(BUILD, "stage2.bin"))
@@ -511,17 +511,29 @@ def build():
     with open(os.path.join(BUILD, "os-image.img"), "wb") as img:
         with open(os.path.join(BUILD, "boot.bin"), "rb") as f:
             img.write(f.read())
+
+        stage2_off = STAGE2_LBA * 512
+        cur = img.tell()
+        if cur < stage2_off:
+            img.write(b"\x00" * (stage2_off - cur))
         with open(os.path.join(BUILD, "stage2.bin"), "rb") as f:
             img.write(f.read())
+
+        kernel_off = KERNEL_LBA * 512
+        cur = img.tell()
+        if cur > kernel_off:
+            print(f"[ERROR] stage2 overflows past kernel LBA {KERNEL_LBA}")
+            sys.exit(1)
+        if cur < kernel_off:
+            img.write(b"\x00" * (kernel_off - cur))
         with open(os.path.join(BUILD, "kernel.bin"), "rb") as f:
             img.write(f.read())
-        written = img.tell()
-        sector_rem = written % 512
-        if sector_rem:
-            img.write(b"\x00" * (512 - sector_rem))
 
         pwd_lba_off = PWD_LBA * 512
         cur = img.tell()
+        if cur > pwd_lba_off:
+            print(f"[ERROR] kernel overflows past password LBA {PWD_LBA}")
+            sys.exit(1)
         if cur < pwd_lba_off:
             img.write(b"\x00" * (pwd_lba_off - cur))
         with open(pwd_path, "rb") as f:
@@ -533,8 +545,8 @@ def build():
     total = os.path.getsize(os.path.join(BUILD, "os-image.img"))
     print(f"\n[DONE] os-image.img: {total} bytes ({total//512} sectors)")
     print(f"  boot.bin:    {boot_size:>7} B  (MBR, LBA 0)")
-    print(f"  stage2.bin:  {s2_size_before:>7} B -> padded {s2_size} B ({STAGE2_SECTORS} sectors, LBA 1-{STAGE2_SECTORS})")
-    print(f"  kernel.bin:  {kernel_size:>7} B  ({kernel_sectors} sectors, LBA {k_lba}+)")
+    print(f"  stage2.bin:  {s2_size_before:>7} B -> padded {s2_size} B (LBA {STAGE2_LBA}-{STAGE2_LBA + STAGE2_SECTORS - 1})")
+    print(f"  kernel.bin:  {kernel_size:>7} B  ({kernel_sectors} sectors, LBA {KERNEL_LBA}+)")
     print(f"  {PWD_FILE}: {os.path.getsize(pwd_path):>6} B  (LBA {PWD_LBA})")
     if total % 512 == 0:
         print(f"  image aligned to 512-byte sectors: OK")

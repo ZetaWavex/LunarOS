@@ -10,7 +10,7 @@
 
 #define LOAD_FRAMES  190
 #define PWD_MAX       24
-#define PWD_LBA       256
+#define PWD_RAM_ADDR  0x1000
 
 static inline void outb(u16 port, u8 val) {
     __asm__ __volatile__("outb %0, %1" :: "a"(val), "Nd"(port));
@@ -19,12 +19,6 @@ static inline void outb(u16 port, u8 val) {
 static inline u8 inb(u16 port) {
     u8 r;
     __asm__ __volatile__("inb %1, %0" : "=a"(r) : "Nd"(port));
-    return r;
-}
-
-static inline u16 inw(u16 port) {
-    u16 r;
-    __asm__ __volatile__("inw %1, %0" : "=a"(r) : "Nd"(port));
     return r;
 }
 
@@ -289,39 +283,6 @@ static void draw_ring_box(u32 *buf, int bw, int bh, int bcx, int bcy,
     gfx_reset_target();
 }
 
-static int ata_read_sector(u32 lba, u8 *out) {
-    u32 guard;
-
-    outb(0x1F6, (u8)(0xE0 | ((lba >> 24) & 0x0F)));
-    outb(0x1F2, 1);
-    outb(0x1F3, (u8)(lba & 0xFF));
-    outb(0x1F4, (u8)((lba >> 8) & 0xFF));
-    outb(0x1F5, (u8)((lba >> 16) & 0xFF));
-    outb(0x1F7, 0x20);
-
-    guard = 0x100000u;
-    while (guard-- > 0) {
-        u8 st = inb(0x1F7);
-        if (!(st & 0x80)) break;
-    }
-    if (guard == 0xFFFFFFFFu) return 0;
-
-    guard = 0x100000u;
-    while (guard-- > 0) {
-        u8 st = inb(0x1F7);
-        if (st & 0x01) return 0;
-        if (st & 0x08) break;
-    }
-    if (!(inb(0x1F7) & 0x08)) return 0;
-
-    for (int i = 0; i < 256; i++) {
-        u16 w = inw(0x1F0);
-        out[i * 2 + 0] = (u8)(w & 0xFF);
-        out[i * 2 + 1] = (u8)(w >> 8);
-    }
-    return 1;
-}
-
 static u32 sha_k[64] = {
     0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5,
     0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5,
@@ -425,12 +386,8 @@ static char pwd_stored[65];
 static int  pwd_loaded = 0;
 
 static void load_password(void) {
-    static u8 sec[512];
+    const u8 *sec = (const u8 *)PWD_RAM_ADDR;
     pwd_loaded = 0;
-    if (!ata_read_sector(PWD_LBA, sec)) {
-        serial_puts("[PWD] read failed\n");
-        return;
-    }
 
     int n = 0;
     for (int i = 0; i < 64; i++) {
