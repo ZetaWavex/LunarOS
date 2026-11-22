@@ -5,6 +5,9 @@ Chat/
 Program/
 build/
 
+*.o
+*.bin
+*.elf
 *.log
 build_log.txt
 *.ps1
