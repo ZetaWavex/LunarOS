@@ -9,6 +9,5 @@ build/
 *.bin
 *.elf
 *.log
-build_log.txt
 *.ps1
 Chat.txt
