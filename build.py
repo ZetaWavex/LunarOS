@@ -250,7 +250,6 @@ def make_cursor_header():
     return path
 
 ISO_BLOCK = 2048
-FLOPPY_144 = 1474560
 
 ISO_PVD_LBA = 16
 ISO_BOOTREC_LBA = 17
