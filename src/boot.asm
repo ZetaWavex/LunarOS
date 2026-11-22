@@ -33,9 +33,33 @@ mov bx, STAGE2_OFF
 jmp bx
 
 disk_err:
+    mov [err_code], ah
     mov bx, msg_err
     call print16
+    mov al, [err_code]
+    call print_hex
     jmp $
+
+print_hex:
+    pusha
+    mov ah, 0x0e
+    mov cl, al
+    shr al, 4
+    call .nib
+    mov al, cl
+    call .nib
+    popa
+    ret
+.nib:
+    and al, 0x0F
+    cmp al, 10
+    jb .d
+    add al, 'A' - 10 - '0'
+.d: add al, '0'
+    int 0x10
+    ret
+
+err_code: db 0
 
 print16:
     pusha
@@ -81,7 +105,7 @@ serial_print:
 
 msg:     db "LunarOS MBR", 13, 10, 0
 msg_ld_ok: db "Stage2 loaded", 13, 10, 0
-msg_err: db "Disk fail!", 0
+msg_err: db "Disk fail! code 0x", 0
 
 DAPACK:
     db 16
