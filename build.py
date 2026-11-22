@@ -349,12 +349,12 @@ def _iso_boot_catalog(image_lba):
     cat = bytearray(ISO_BLOCK)
     cat[0] = 1
     cat[1] = 0
-    cat[8] = 0x55
-    cat[9] = 0xAA
+    cat[30] = 0x55
+    cat[31] = 0xAA
     words = 0
     for i in range(0, 32, 2):
         words += cat[i] | (cat[i + 1] << 8)
-    cat[6:8] = struct.pack("<H", (-words) & 0xFFFF)
+    cat[28:30] = struct.pack("<H", (-words) & 0xFFFF)
 
     e = 32
     cat[e] = 0x88

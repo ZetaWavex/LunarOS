@@ -38,8 +38,9 @@ def main():
     ]
     proc = subprocess.Popen(cmd, cwd=ROOT,
                             stdout=subprocess.DEVNULL,
-                            stderr=subprocess.DEVNULL)
+                            stderr=open(os.path.join(OUT, tag + "_qemu.err"), "wb"))
     time.sleep(wait)
+    print("qemu alive:", proc.poll() is None, "rc:", proc.poll())
 
     try:
         s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -55,7 +56,7 @@ def main():
             time.sleep(0.35)
         if keys:
             time.sleep(2.0)
-        s.sendall(("screendump %s\n" % shot).encode())
+        s.sendall(('screendump "%s"\n' % shot.replace("\\", "/")).encode())
         time.sleep(2)
         s.close()
     except Exception as e:
