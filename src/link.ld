@@ -1,3 +1,4 @@
+OUTPUT_FORMAT("pe-x86-64")
 ENTRY(start)
 SECTIONS {
     . = 0x10000;
@@ -5,14 +6,17 @@ SECTIONS {
         *(.text.start)
         *(.text*)
     }
-    .rodata : {
+    .rdata : {
+        *(.rdata*)
         *(.rodata*)
     }
     .data : {
         *(.data*)
     }
     .bss : {
+        __bss_start = .;
         *(.bss*)
         *(COMMON)
+        __bss_end = .;
     }
 }

@@ -4,6 +4,10 @@ PWD_SRC_SEG    equ 0x2700
 PWD_SRC_OFF    equ 0x0C00
 PWD_DST_ADDR   equ 0x1000
 
+PML4_ADDR      equ 0x100000
+PDPT_ADDR      equ 0x101000
+PD_ADDR        equ 0x102000
+
 [org 0x9000]
 [bits 16]
 
@@ -115,6 +119,90 @@ serial32_puts:
     pop eax
     ret
 
+setup_page_tables:
+    cld
+    mov edi, PML4_ADDR
+    xor eax, eax
+    mov ecx, 6 * 1024
+    rep stosd
+
+    mov edi, PML4_ADDR
+    mov eax, PDPT_ADDR
+    or eax, 0x3
+    mov [edi], eax
+    mov dword [edi + 4], 0
+
+    mov edi, PDPT_ADDR
+    mov eax, PD_ADDR
+    or eax, 0x3
+    mov ecx, 4
+.pdpt:
+    mov [edi], eax
+    mov dword [edi + 4], 0
+    add eax, 0x1000
+    add edi, 8
+    loop .pdpt
+
+    mov edi, PD_ADDR
+    xor eax, eax
+    mov ecx, 4 * 512
+.pd:
+    mov edx, eax
+    or edx, 0x83
+    mov [edi], edx
+    mov dword [edi + 4], 0
+    add eax, 0x200000
+    add edi, 8
+    loop .pd
+
+    mov edi, PD_ADDR + 3 * 0x1000
+    mov ecx, 512
+.uncached:
+    or dword [edi], 0x10
+    add edi, 8
+    loop .uncached
+
+    ret
+
+enable_long_mode:
+    mov esi, msg_lm_req
+    call serial32_puts
+
+    lgdt [gdt_descriptor]
+
+    mov eax, cr4
+    or eax, 0x20
+    mov cr4, eax
+
+    mov eax, PML4_ADDR
+    mov cr3, eax
+
+    mov ecx, 0xC0000080
+    rdmsr
+    or eax, 0x100
+    wrmsr
+
+    mov eax, cr0
+    or eax, 0x80000001
+    mov cr0, eax
+
+    mov esi, msg_lm_ok
+    call serial32_puts
+
+    mov edi, PARAM_BLOCK
+    mov eax, [vbe_lfb]
+    mov [edi + 0], eax
+    mov eax, [vbe_width]
+    mov [edi + 4], eax
+    mov eax, [vbe_height]
+    mov [edi + 8], eax
+    mov eax, [vbe_bpp]
+    mov [edi + 12], eax
+    mov eax, [vbe_pitch]
+    mov [edi + 16], eax
+
+    jmp CODE64_SEG:KERNEL_OFFSET
+
 init_pm:
     mov ax, DATA_SEG
     mov ds, ax
@@ -129,28 +217,11 @@ init_pm:
     mov esi, msg_pm_ok
     call serial32_puts
 
-BEGIN_PM:
-    mov eax, [vbe_pitch]
-    push eax
-    mov eax, [vbe_bpp]
-    push eax
-    mov eax, [vbe_height]
-    push eax
-    mov eax, [vbe_width]
-    push eax
-    mov eax, [vbe_lfb]
-    push eax
-
-    mov esi, msg_call_kernel
-    call serial32_puts
-
-    call KERNEL_OFFSET
-
-    mov esi, msg_kernel_ret
-    call serial32_puts
+    call setup_page_tables
+    call enable_long_mode
 
     jmp $
 
-msg_pm_ok:         db "PM entered OK", 13, 10, 0
-msg_call_kernel:   db "Calling kernel @0x10000", 13, 10, 0
-msg_kernel_ret:    db "Kernel returned!", 13, 10, 0
+msg_pm_ok:  db "PM entered OK", 13, 10, 0
+msg_lm_req: db "Switching to long mode...", 13, 10, 0
+msg_lm_ok:  db "Long mode active, jumping kernel", 13, 10, 0
