@@ -263,6 +263,8 @@ ISO_IMAGE_LBA = 23
 BOOT_MEDIA_HD = 4
 BOOT_MEDIA_NONE = 0
 
+ISO_USE_NONE = True
+
 
 def _iso_time7():
     now = time.gmtime()
@@ -360,12 +362,20 @@ def _iso_boot_catalog(image_lba, boot_sectors):
 
     e = 32
     cat[e] = 0x88
-    cat[e + 1] = BOOT_MEDIA_HD
-    cat[e + 2:e + 4] = struct.pack("<H", 0)
-    cat[e + 4] = 0
-    cat[e + 5] = 0
-    cat[e + 6:e + 8] = struct.pack("<H", boot_sectors)
-    cat[e + 8:e + 12] = struct.pack("<I", image_lba)
+    if ISO_USE_NONE:
+        cat[e + 1] = BOOT_MEDIA_NONE
+        cat[e + 2:e + 4] = struct.pack("<H", 0x07C0)
+        cat[e + 4] = 0
+        cat[e + 5] = 0
+        cat[e + 6:e + 8] = struct.pack("<H", boot_sectors & 0xFFFF)
+        cat[e + 8:e + 12] = struct.pack("<I", image_lba)
+    else:
+        cat[e + 1] = BOOT_MEDIA_HD
+        cat[e + 2:e + 4] = struct.pack("<H", 0)
+        cat[e + 4] = 0
+        cat[e + 5] = 0
+        cat[e + 6:e + 8] = struct.pack("<H", boot_sectors)
+        cat[e + 8:e + 12] = struct.pack("<I", image_lba)
     return bytes(cat)
 
 
