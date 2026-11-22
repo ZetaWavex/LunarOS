@@ -22,7 +22,7 @@ best_mode:  dw 0
 best_w:     dw 0
 best_h:     dw 0
 best_bpp:   dw 0
-best_pitch: dw 0
+best_pitch: dd 0
 best_lfb:   dd 0
 best_score: dd 0
 
@@ -178,6 +178,19 @@ set_vesa_mode:
     neg ecx
 .ar2_ok:
     add eax, ecx
+
+    movzx ebx, byte [es:di + 25]
+    cmp ebx, 24
+    je .bpp24_pen
+    cmp ebx, 32
+    je .bpp_ok
+    mov ebx, BPP24_PENALTY
+    add eax, ebx
+    jmp .bpp_ok
+.bpp24_pen:
+    mov ebx, BPP24_PENALTY
+    add eax, ebx
+.bpp_ok:
     mov [cur_score], eax
 
     cmp eax, [best_score]
@@ -194,7 +207,8 @@ set_vesa_mode:
     movzx eax, al
     mov [best_bpp], ax
     call mode_pitch
-    mov [best_pitch], ax
+    movzx eax, ax
+    mov [best_pitch], eax
     mov eax, [es:di + 40]
     mov [best_lfb], eax
     jmp .next
@@ -222,7 +236,8 @@ set_vesa_mode:
     movzx eax, al
     mov [best_bpp], ax
     call mode_pitch
-    mov [best_pitch], ax
+    movzx eax, ax
+    mov [best_pitch], eax
     mov eax, [es:di + 40]
     mov [best_lfb], eax
 
@@ -243,8 +258,8 @@ set_vesa_mode:
     mov [vbe_height], ax
     movzx eax, word [best_bpp]
     mov [vbe_bpp], eax
-    mov ax, [best_pitch]
-    mov [vbe_pitch], ax
+    mov eax, [best_pitch]
+    mov [vbe_pitch], eax
 
     pop es
 

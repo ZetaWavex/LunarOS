@@ -1869,16 +1869,38 @@ void kernel_main(u32 lfb, u32 width, u32 height, u32 bpp, u32 pitch) {
     serial_putnum(pitch);
     serial_putc('\n');
 
+    if (pitch == 0) pitch = min_pitch;
+
     if (pitch < min_pitch) {
-        if (pitch >= width) {
-            u32 cand = pitch * bytes_pp;
-            pitch = (cand >= min_pitch) ? cand : min_pitch;
+        if (pitch >= width && (pitch % width) == 0) {
+            u32 d = pitch / width;
+            if (d >= 2 && d <= 4) {
+                if (d * 8u < bpp) {
+                    bpp = d * 8u;
+                    bytes_pp = d;
+                    min_pitch = width * bytes_pp;
+                    pitch = min_pitch;
+                    serial_puts("[KERNEL] bpp derived from pitch: ");
+                    serial_putnum(bpp);
+                    serial_putc('\n');
+                } else {
+                    pitch = pitch * bytes_pp;
+                }
+            } else {
+                pitch = min_pitch;
+            }
         } else {
             pitch = min_pitch;
         }
+        if (pitch < min_pitch) pitch = min_pitch;
         serial_puts("[KERNEL] pitch fixed to ");
         serial_putnum(pitch);
         serial_putc('\n');
+    }
+
+    if (pitch > min_pitch * 2u) {
+        pitch = min_pitch;
+        serial_puts("[KERNEL] pitch clamped to min\n");
     }
 
     info.width  = width;
