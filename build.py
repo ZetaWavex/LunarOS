@@ -386,11 +386,13 @@ def make_iso(img_path, iso_path):
     boot_img = raw
     if len(boot_img) % 512:
         boot_img += b"\x00" * (512 - len(boot_img) % 512)
+    boot_sectors = len(boot_img) // 512
+    if len(boot_img) % ISO_BLOCK:
+        boot_img += b"\x00" * (ISO_BLOCK - len(boot_img) % ISO_BLOCK)
 
     when = _iso_time7()
-    image_blocks = (len(boot_img) + ISO_BLOCK - 1) // ISO_BLOCK
+    image_blocks = len(boot_img) // ISO_BLOCK
     volume_blocks = ISO_IMAGE_LBA + image_blocks
-    boot_sectors = len(boot_img) // 512
 
     root_rec = _iso_dir_record(ISO_ROOT_LBA, ISO_BLOCK, b"\x00", 2, when)
     path_l = _iso_path_table(ISO_ROOT_LBA, False)
