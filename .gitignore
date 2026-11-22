@@ -7,6 +7,7 @@ build/
 
 *.o
 *.bin
+*.exe
 *.elf
 *.log
 *.ps1

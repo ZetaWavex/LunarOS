@@ -20,7 +20,7 @@ color_t rgba_to_color(rgba_t px) {
 
 void gfx_init(gfx_info_t *info) {
     g_gfx = *info;
-    framebuffer = (volatile u8 *)(u32)info->lfb;
+    framebuffer = (volatile u8 *)info->lfb;
     g_bpp = info->bpp;
 }
 

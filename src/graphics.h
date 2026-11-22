@@ -4,13 +4,14 @@
 typedef unsigned char  u8;
 typedef unsigned short u16;
 typedef unsigned int   u32;
+typedef unsigned long long u64;
 
 typedef struct {
     u32 width;
     u32 height;
     u32 bpp;
     u32 pitch;
-    u32 lfb;
+    u64 lfb;
 } gfx_info_t;
 
 typedef struct {

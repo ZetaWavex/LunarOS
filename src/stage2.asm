@@ -7,6 +7,7 @@ PWD_DST_ADDR   equ 0x1000
 PML4_ADDR      equ 0x100000
 PDPT_ADDR      equ 0x101000
 PD_ADDR        equ 0x102000
+PARAM_BLOCK    equ 0x5000
 
 [org 0x9000]
 [bits 16]
@@ -171,7 +172,7 @@ enable_long_mode:
     lgdt [gdt_descriptor]
 
     mov eax, cr4
-    or eax, 0x20
+    or eax, 0x620
     mov cr4, eax
 
     mov eax, PML4_ADDR
@@ -192,14 +193,15 @@ enable_long_mode:
     mov edi, PARAM_BLOCK
     mov eax, [vbe_lfb]
     mov [edi + 0], eax
+    mov dword [edi + 4], 0
     mov eax, [vbe_width]
-    mov [edi + 4], eax
-    mov eax, [vbe_height]
     mov [edi + 8], eax
-    mov eax, [vbe_bpp]
+    mov eax, [vbe_height]
     mov [edi + 12], eax
-    mov eax, [vbe_pitch]
+    mov eax, [vbe_bpp]
     mov [edi + 16], eax
+    mov eax, [vbe_pitch]
+    mov [edi + 20], eax
 
     jmp CODE64_SEG:KERNEL_OFFSET
 

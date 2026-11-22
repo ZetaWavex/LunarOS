@@ -18,14 +18,12 @@ start:
     mov rsp, 0x90000
     xor rbp, rbp
 
-    mov rcx, [PARAM_BLOCK + 0]
-    mov rdx, [PARAM_BLOCK + 4]
-    mov r8,  [PARAM_BLOCK + 8]
-    mov r9,  [PARAM_BLOCK + 12]
+    mov rdi, [PARAM_BLOCK + 0]
+    mov esi, [PARAM_BLOCK + 8]
+    mov edx, [PARAM_BLOCK + 12]
+    mov ecx, [PARAM_BLOCK + 16]
+    mov r8d, [PARAM_BLOCK + 20]
 
-    sub rsp, 0x30
-    mov eax, [PARAM_BLOCK + 16]
-    mov [rsp + 0x20], rax
     call kernel_main
 
 .halt:

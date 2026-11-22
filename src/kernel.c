@@ -1850,7 +1850,7 @@ try_login:
     }
 }
 
-void kernel_main(u32 lfb, u32 width, u32 height, u32 bpp, u32 pitch) {
+void kernel_main(u64 lfb, u32 width, u32 height, u32 bpp, u32 pitch) {
     gfx_info_t info;
     u32 bytes_pp;
     u32 min_pitch;
@@ -1910,7 +1910,7 @@ void kernel_main(u32 lfb, u32 width, u32 height, u32 bpp, u32 pitch) {
     info.lfb    = lfb;
     gfx_init(&info);
 
-    fb = (u8 *)(u32)lfb;
+    fb = (u8 *)lfb;
     fb_pitch = pitch;
     fb_bpp = bpp;
     scr_w = width;
