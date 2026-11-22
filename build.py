@@ -261,6 +261,7 @@ ISO_ROOT_LBA = 22
 ISO_IMAGE_LBA = 23
 
 BOOT_MEDIA_HD = 4
+BOOT_MEDIA_NONE = 0
 
 
 def _iso_time7():
