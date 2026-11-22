@@ -39,6 +39,7 @@ def _find_mingw():
 
 MINGW_BIN = _find_mingw()
 GCC = os.path.join(MINGW_BIN, "gcc.exe")
+LD = os.path.join(MINGW_BIN, "ld.exe")
 OBJCOPY = os.path.join(MINGW_BIN, "objcopy.exe")
 
 STAGE2_SECTORS = 10
@@ -451,13 +452,15 @@ def build():
          "-o", os.path.join(BUILD, "boot.bin")],
         "Assembling MBR bootsector")
 
-    run([NASM, "-f", "elf32", os.path.join(SRC, "kernel_entry.asm"),
+    run([NASM, "-f", "elf64", os.path.join(SRC, "kernel_entry.asm"),
          "-o", os.path.join(BUILD, "kernel_entry.o")],
-        "Assembling kernel entry")
+        "Assembling kernel entry (64-bit)")
 
     cflags = [
-        "-m32", "-ffreestanding", "-fno-pie", "-fno-stack-protector",
+        "-m64", "-ffreestanding", "-fno-pie", "-fno-stack-protector",
         "-fno-leading-underscore", "-nostdlib", "-std=c99",
+        "-mno-red-zone", "-mcmodel=small", "-mno-stack-arg-probe",
+        "-fno-asynchronous-unwind-tables", "-fno-unwind-tables",
         f"-I{SRC}", f"-I{BUILD}", "-c",
     ]
 
@@ -471,7 +474,7 @@ def build():
          "-o", os.path.join(BUILD, "kernel.o")],
         "Compiling kernel.c")
 
-    run([GCC, "-m32", "-nostdlib", "-nostartfiles",
+    run([LD, "-m", "i386pep", "--image-base", "0x0", "-e", "start",
          "-T", os.path.join(SRC, "link.ld"),
          "-o", os.path.join(BUILD, "kernel.elf"),
          os.path.join(BUILD, "kernel_entry.o"),
