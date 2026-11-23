@@ -17,12 +17,15 @@ start:
 
     mov rsp, 0x90000
     xor rbp, rbp
+    sub rsp, 48
 
-    mov rdi, [PARAM_BLOCK + 0]
-    mov esi, [PARAM_BLOCK + 8]
-    mov edx, [PARAM_BLOCK + 12]
-    mov ecx, [PARAM_BLOCK + 16]
-    mov r8d, [PARAM_BLOCK + 20]
+    mov eax, [abs PARAM_BLOCK + 20]
+    mov [rsp + 32], rax
+
+    mov rcx, [abs PARAM_BLOCK + 0]
+    mov edx, [abs PARAM_BLOCK + 8]
+    mov r8d, [abs PARAM_BLOCK + 12]
+    mov r9d, [abs PARAM_BLOCK + 16]
 
     call kernel_main
 
@@ -32,8 +35,8 @@ start:
     jmp .halt
 
 delay_asm:
-    mov ecx, edi
+    mov eax, ecx
 .loop:
-    dec ecx
+    dec eax
     jnz .loop
     ret
