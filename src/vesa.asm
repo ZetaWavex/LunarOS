@@ -25,6 +25,7 @@ best_bpp:   dw 0
 best_pitch: dd 0
 best_lfb:   dd 0
 best_score: dd 0
+vbe_total_mem: dw 0
 
 msg_vbe_mode: db "VBE mode ", 0
 msg_vbe_x:    db "x", 0
@@ -159,6 +160,18 @@ set_vesa_mode:
     jb .next
     cmp word [cur_h], 480
     jb .next
+
+    call mode_pitch
+    movzx eax, ax
+    movzx edx, word [cur_h]
+    imul eax, edx
+    movzx ebx, word [VBE_INFO_ADDR + 18]
+    test ebx, ebx
+    jz .mem_ok
+    shl ebx, 16
+    cmp eax, ebx
+    ja .next
+.mem_ok:
 
     movzx eax, word [cur_w]
     imul eax, 9

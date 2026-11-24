@@ -6,7 +6,7 @@ import time
 ROOT = os.path.dirname(os.path.abspath(__file__))
 BUILD = os.path.join(ROOT, "build.py")
 IMAGE = os.path.join(ROOT, "build", "os-image.img")
-QEMU = os.path.join(ROOT, "Program", "QEMU", "qemu-system-i386.exe")
+QEMU = os.path.join(ROOT, "Program", "QEMU", "qemu-system-x86_64.exe")
 
 QEMU_PROCESSES = ("qemu-system-i386.exe", "qemu-system-x86_64.exe")
 MAX_RETRY = 3

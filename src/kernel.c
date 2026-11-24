@@ -64,6 +64,13 @@ static void delay_us(u32 us) {
     outb(0x61, gate);
 }
 
+static void vsync_wait(void) {
+    u32 guard = 200000u;
+    while ((inb(0x3DA) & 0x08) && guard--) { }
+    guard = 200000u;
+    while (!(inb(0x3DA) & 0x08) && guard--) { }
+}
+
 static void serial_puts(const char *s) {
     while (*s) serial_putc(*s++);
 }
@@ -1658,6 +1665,7 @@ static void run_boot_animation(void) {
         mouse_poll();
         mouse_moved = 0;
 
+        vsync_wait();
         draw_ring_box(ring_buf, box_w, box_h, bcx, bcy, box_y, rx, ry, th, phase, white);
         gfx_blit_buffer(ring_buf, box_w, box_x, box_y, box_w, box_h);
         phase = (phase + ARC_STEP) % 360;

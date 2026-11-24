@@ -14,6 +14,9 @@ PARAM_BLOCK    equ 0x5000
 
 jmp main
 
+times 0x10 - ($ - $$) db 0
+sig_here: db "LNR2"
+
 %include "print16.asm"
 %include "vesa.asm"
 %include "gdt.asm"
@@ -163,6 +166,46 @@ setup_page_tables:
     add edi, 8
     loop .uncached
 
+    call mark_lfb_uncached
+
+    ret
+
+mark_lfb_uncached:
+    mov eax, [vbe_lfb]
+    test eax, eax
+    jz .done
+    mov ecx, [vbe_pitch]
+    test ecx, ecx
+    jz .done
+    mov edx, [vbe_height]
+    test edx, edx
+    jz .done
+
+    imul ecx, edx
+    add ecx, 0x1FFFFF
+    shr ecx, 21
+    inc ecx
+    cmp ecx, 512
+    jbe .count_ok
+    mov ecx, 512
+.count_ok:
+
+    mov edi, eax
+    shr edi, 21
+    mov edx, edi
+    shr edx, 9
+    and edx, 3
+    shl edx, 12
+    add edx, PD_ADDR
+    and edi, 0x1FF
+    lea edi, [edx + edi * 8]
+
+.mark:
+    or dword [edi], 0x10
+    add edi, 8
+    dec ecx
+    jnz .mark
+.done:
     ret
 
 enable_long_mode:

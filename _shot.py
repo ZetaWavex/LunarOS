@@ -5,7 +5,7 @@ import time
 import os
 
 ROOT = os.path.dirname(os.path.abspath(__file__))
-QEMU = os.path.join(ROOT, "Program", "QEMU", "qemu-system-i386.exe")
+QEMU = os.path.join(ROOT, "Program", "QEMU", "qemu-system-x86_64.exe")
 IMAGE = os.path.join(ROOT, "build", "os-image.img")
 SERIAL = os.path.join(ROOT, "build", "serial.log")
 MON = 45458
