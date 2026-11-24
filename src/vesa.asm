@@ -165,6 +165,8 @@ set_vesa_mode:
     movzx eax, ax
     movzx edx, word [cur_h]
     imul eax, edx
+    cmp eax, 4194304
+    ja .next
     movzx ebx, word [VBE_INFO_ADDR + 18]
     test ebx, ebx
     jz .mem_ok
@@ -262,6 +264,37 @@ set_vesa_mode:
     int 0x10
     cmp ax, 0x004f
     jne .fail
+
+    mov ax, 0x4f03
+    xor bx, bx
+    int 0x10
+    cmp ax, 0x004f
+    jne .keep
+    mov ax, bx
+    and ax, 0x3FFF
+    cmp ax, [best_mode]
+    je .keep
+    mov [best_mode], ax
+    mov cx, ax
+    mov ax, VBE_MODE_INFO_ADDR >> 4
+    mov es, ax
+    xor di, di
+    mov ax, 0x4f01
+    int 0x10
+    cmp ax, 0x004f
+    jne .keep
+    mov ax, [es:di + 18]
+    mov [best_w], ax
+    mov ax, [es:di + 20]
+    mov [best_h], ax
+    movzx eax, byte [es:di + 25]
+    mov [best_bpp], ax
+    call mode_pitch
+    movzx eax, ax
+    mov [best_pitch], eax
+    mov eax, [es:di + 40]
+    mov [best_lfb], eax
+.keep:
 
     mov eax, [best_lfb]
     mov [vbe_lfb], eax

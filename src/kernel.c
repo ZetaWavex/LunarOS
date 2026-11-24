@@ -1665,8 +1665,8 @@ static void run_boot_animation(void) {
         mouse_poll();
         mouse_moved = 0;
 
-        vsync_wait();
         draw_ring_box(ring_buf, box_w, box_h, bcx, bcy, box_y, rx, ry, th, phase, white);
+        vsync_wait();
         gfx_blit_buffer(ring_buf, box_w, box_x, box_y, box_w, box_h);
         phase = (phase + ARC_STEP) % 360;
 
