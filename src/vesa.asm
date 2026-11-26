@@ -29,6 +29,144 @@ vbe_total_mem: dw 0
 size_cap:   dd 4194304
 retry_flag: db 0
 vmware_flag: db 0
+svga2_flag: db 0
+sv_w:     dw 0
+sv_h:     dw 0
+sv_bpp:   dw 0
+sv_pitch: dd 0
+sv_lfb:   dd 0
+
+SVGA_INDEX_PORT   equ 0x1CE
+SVGA_DATA_PORT    equ 0x1CF
+SVGA_REG_ID       equ 0
+SVGA_REG_WIDTH    equ 2
+SVGA_REG_HEIGHT   equ 3
+SVGA_REG_BPP      equ 7
+SVGA_REG_BPL      equ 12
+SVGA_REG_FB_START equ 13
+
+msg_svga_real: db "SVGA real ", 0
+
+svga_reg_read:
+    push dx
+    mov dx, SVGA_INDEX_PORT
+    out dx, eax
+    mov dx, SVGA_DATA_PORT
+    in eax, dx
+    pop dx
+    ret
+
+svga_probe:
+    pushad
+    mov byte [svga2_flag], 0
+    mov eax, SVGA_REG_ID
+    call svga_reg_read
+    cmp eax, 0x90000001
+    jb .no
+    cmp eax, 0x90000004
+    ja .no
+    mov byte [svga2_flag], 1
+.no:
+    popad
+    ret
+
+svga_fix_mode:
+    pushad
+
+    movzx eax, word [best_bpp]
+    mov [sv_bpp], ax
+
+    mov eax, SVGA_REG_BPP
+    call svga_reg_read
+    cmp eax, 16
+    jb .bpl
+    cmp eax, 32
+    ja .bpl
+    mov [sv_bpp], ax
+
+.bpl:
+    movzx edx, word [sv_bpp]
+    shr edx, 3
+    test edx, edx
+    jz .done
+
+    mov eax, SVGA_REG_BPL
+    call svga_reg_read
+    test eax, eax
+    jz .done
+    cmp eax, 0x10000
+    ja .done
+
+    mov ecx, eax
+    xor edx, edx
+    movzx ebx, word [sv_bpp]
+    shr ebx, 3
+    div ebx
+    test edx, edx
+    jnz .done
+    cmp eax, 640
+    jb .done
+    cmp eax, 4096
+    ja .done
+    mov [sv_w], ax
+
+    mov eax, SVGA_REG_HEIGHT
+    call svga_reg_read
+    test eax, eax
+    jz .done
+    cmp eax, 480
+    jb .done
+    cmp eax, 4096
+    ja .done
+    mov [sv_h], ax
+
+    mov [sv_pitch], ecx
+
+    mov eax, SVGA_REG_FB_START
+    call svga_reg_read
+    test eax, eax
+    jz .commit
+    cmp eax, 0xFFFFFFF0
+    jae .commit
+    mov [sv_lfb], eax
+    jmp .commit2
+.commit:
+    mov eax, [best_lfb]
+    mov [sv_lfb], eax
+.commit2:
+
+    mov ax, [sv_w]
+    mov [best_w], ax
+    mov ax, [sv_h]
+    mov [best_h], ax
+    mov ax, [sv_bpp]
+    mov [best_bpp], ax
+    mov eax, [sv_pitch]
+    mov [best_pitch], eax
+    mov eax, [sv_lfb]
+    mov [best_lfb], eax
+
+    mov bx, msg_svga_real
+    call serial_print
+    mov ax, [best_w]
+    call serial_num16
+    mov bx, msg_vbe_x
+    call serial_print
+    mov ax, [best_h]
+    call serial_num16
+    mov al, ' '
+    call serial_char
+    mov ax, [best_bpp]
+    call serial_num16
+    mov bx, msg_vbe_bpp
+    call serial_print
+    mov al, 13
+    call serial_char
+    mov al, 10
+    call serial_char
+.done:
+    popad
+    ret
 
 detect_vmware:
     pushad
@@ -152,6 +290,7 @@ set_vesa_mode:
     mov dword [best_lfb], 0
 
     call detect_vmware
+    call svga_probe
 
     movzx eax, word [VBE_INFO_ADDR + 18]
     shl eax, 16
@@ -358,6 +497,11 @@ set_vesa_mode:
     mov eax, [es:di + 40]
     mov [best_lfb], eax
 .keep:
+
+    cmp byte [svga2_flag], 0
+    je .no_svga
+    call svga_fix_mode
+.no_svga:
 
     mov eax, [best_lfb]
     mov [vbe_lfb], eax
