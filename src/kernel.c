@@ -1662,9 +1662,6 @@ static void run_boot_animation(void) {
     int bcy = box_h / 2;
 
     for (int f = 0; f < LOAD_FRAMES; f++) {
-        mouse_poll();
-        mouse_moved = 0;
-
         draw_ring_box(ring_buf, box_w, box_h, bcx, bcy, box_y, rx, ry, th, phase, white);
         vsync_wait();
         gfx_blit_buffer(ring_buf, box_w, box_x, box_y, box_w, box_h);
@@ -1675,6 +1672,12 @@ static void run_boot_animation(void) {
 }
 
 static void login_screen(void) {
+    mouse_cycle = 0;
+    mouse_buttons = 0;
+    mouse_press = 0;
+    mouse_moved = 0;
+    mouse_init();
+
     int sc_msg_x = ui_k * 3 / 200;
     int sc_msg_y = ui_k * 3 / 200;
     if (sc_msg_x < 1) sc_msg_x = 1;
@@ -1947,7 +1950,6 @@ void kernel_main(u64 lfb, u32 width, u32 height, u32 bpp, u32 pitch) {
 
     mouse_x = (int)scr_w / 2;
     mouse_y = (int)scr_h / 2;
-    mouse_init();
 
     run_boot_animation();
     serial_puts("[KERNEL] loading finished, entering login\n");

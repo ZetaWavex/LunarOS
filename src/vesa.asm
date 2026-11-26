@@ -26,6 +26,29 @@ best_pitch: dd 0
 best_lfb:   dd 0
 best_score: dd 0
 vbe_total_mem: dw 0
+size_cap:   dd 4194304
+retry_flag: db 0
+vmware_flag: db 0
+
+detect_vmware:
+    pushad
+    mov byte [vmware_flag], 0
+    xor eax, eax
+    cpuid
+    cmp eax, 0x40000000
+    jb .not_vm
+    mov eax, 0x40000000
+    cpuid
+    cmp ebx, 0x61774D56
+    jne .not_vm
+    cmp ecx, 0x4D566572
+    jne .not_vm
+    cmp edx, 0x65726177
+    jne .not_vm
+    mov byte [vmware_flag], 1
+.not_vm:
+    popad
+    ret
 
 msg_vbe_mode: db "VBE mode ", 0
 msg_vbe_x:    db "x", 0
@@ -96,6 +119,19 @@ mode_pitch:
     ret
 .legacy:
     mov ax, [es:di + 16]
+    test ax, ax
+    jnz .done
+    mov ax, [es:di + 18]
+    movzx eax, ax
+    movzx ecx, byte [es:di + 25]
+    shr ecx, 3
+    test ecx, ecx
+    jz .zero
+    imul eax, ecx
+.done:
+    ret
+.zero:
+    xor ax, ax
     ret
 
 set_vesa_mode:
@@ -114,6 +150,31 @@ set_vesa_mode:
     mov word [best_bpp], 0
     mov word [best_pitch], 0
     mov dword [best_lfb], 0
+
+    call detect_vmware
+
+    movzx eax, word [VBE_INFO_ADDR + 18]
+    shl eax, 16
+    cmp byte [vmware_flag], 0
+    jne .cap_vm
+    test eax, eax
+    jz .cap_4m
+    cmp eax, 0x04000000
+    jbe .cap_have
+.cap_4m:
+    mov eax, 4194304
+    jmp .cap_have
+.cap_vm:
+    cmp eax, 4194304
+    jbe .cap_vm_ok
+    mov eax, 4194304
+.cap_vm_ok:
+    test eax, eax
+    jnz .cap_have
+    mov eax, 4194304
+.cap_have:
+    sub eax, 262144
+    mov [size_cap], eax
 
     mov si, [mode_list_off]
     mov word [mode_cursor], 0
@@ -161,17 +222,19 @@ set_vesa_mode:
     cmp word [cur_h], 480
     jb .next
 
+    cmp byte [vmware_flag], 0
+    je .res_ok
+    cmp word [cur_w], 1024
+    ja .next
+    cmp word [cur_h], 768
+    ja .next
+.res_ok:
+
     call mode_pitch
     movzx eax, ax
     movzx edx, word [cur_h]
     imul eax, edx
-    cmp eax, 4194304
-    ja .next
-    movzx ebx, word [VBE_INFO_ADDR + 18]
-    test ebx, ebx
-    jz .mem_ok
-    shl ebx, 16
-    cmp eax, ebx
+    cmp eax, [size_cap]
     ja .next
 .mem_ok:
 
