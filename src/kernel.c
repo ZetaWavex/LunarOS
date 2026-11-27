@@ -26,6 +26,21 @@ static inline void outw(u16 port, u16 val) {
     __asm__ __volatile__("outw %0, %1" :: "a"(val), "Nd"(port));
 }
 
+static inline void outl(u16 port, u32 val) {
+    __asm__ __volatile__("outl %0, %1" :: "a"(val), "Nd"(port));
+}
+
+static inline u32 inl(u16 port) {
+    u32 r;
+    __asm__ __volatile__("inl %1, %0" : "=a"(r) : "Nd"(port));
+    return r;
+}
+
+static u32 svga_read(u32 idx) {
+    outw(0x1CE, (u16)idx);
+    return inl(0x1CF);
+}
+
 static void serial_putc(char c) {
     while (!(inb(0x3FD) & 0x20)) { }
     outb(0x3F8, (u8)c);
@@ -1861,14 +1876,37 @@ try_login:
     }
 }
 
+static int svga_real_params(u32 *pw, u32 *ph, u32 *pbpp, u32 *ppitch) {
+    u32 id = svga_read(0);
+    if (id < 0x90000001u || id > 0x90000004u) return 0;
+
+    u32 bpl = svga_read(12);
+    u32 h   = svga_read(3);
+    if (bpl == 0 || bpl > 0x10000u) return 0;
+    if (h < 480 || h > 4096) return 0;
+
+    u32 bpp = svga_read(7);
+    if (bpp < 16 || bpp > 32) bpp = *pbpp;
+    u32 bytes = bpp / 8;
+    if (bytes == 0) return 0;
+    if ((bpl % bytes) != 0) return 0;
+
+    u32 w = bpl / bytes;
+    u32 wreg = svga_read(2);
+    if (wreg >= 640 && wreg <= 4096 && wreg < w) w = wreg;
+    if (w < 640 || w > 4096) return 0;
+
+    *pw = w;
+    *ph = h;
+    *pbpp = bpp;
+    *ppitch = bpl;
+    return 1;
+}
+
 void kernel_main(u64 lfb, u32 width, u32 height, u32 bpp, u32 pitch) {
     gfx_info_t info;
     u32 bytes_pp;
     u32 min_pitch;
-
-    bytes_pp = bpp / 8;
-    if (bytes_pp == 0) bytes_pp = 1;
-    min_pitch = width * bytes_pp;
 
     serial_puts("[KERNEL] vbe raw w=");
     serial_putnum(width);
@@ -1880,6 +1918,28 @@ void kernel_main(u64 lfb, u32 width, u32 height, u32 bpp, u32 pitch) {
     serial_putnum(pitch);
     serial_putc('\n');
 
+    {
+        u32 rw = width, rh = height, rb = bpp, rp = pitch;
+        if (svga_real_params(&rw, &rh, &rb, &rp)) {
+            width  = rw;
+            height = rh;
+            bpp    = rb;
+            pitch  = rp;
+            serial_puts("[KERNEL] svga real w=");
+            serial_putnum(width);
+            serial_puts(" h=");
+            serial_putnum(height);
+            serial_puts(" bpp=");
+            serial_putnum(bpp);
+            serial_puts(" pitch=");
+            serial_putnum(pitch);
+            serial_putc('\n');
+        }
+    }
+
+    bytes_pp = bpp / 8;
+    if (bytes_pp == 0) bytes_pp = 1;
+    min_pitch = width * bytes_pp;
     if (pitch == 0) pitch = min_pitch;
 
     if (pitch < min_pitch) {
